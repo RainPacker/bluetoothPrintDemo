@@ -9,6 +9,8 @@ import android.content.Intent;
 import android.provider.Settings;
 
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -63,16 +65,28 @@ public class BluetoothUtil {
     public static BluetoothSocket connectDevice(BluetoothDevice device) {
         BluetoothSocket socket = null;
         try {
+            // b  00001101-0000-1000-8000-00805F9B34FB
             BluetoothAdapter defaultAdapter = BluetoothAdapter.getDefaultAdapter();
-            socket=   defaultAdapter.getRemoteDevice(device.getAddress()).createRfcommSocketToServiceRecord(
-                    UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"));
+            try {
+                Method createRfcommSocket = device.getClass().getMethod("createRfcommSocket", new Class[]{int.class});
+                socket = (BluetoothSocket) createRfcommSocket.invoke(device,1);
+            } catch (NoSuchMethodException e) {
+                throw new RuntimeException(e);
+            } catch (InvocationTargetException e) {
+                throw new RuntimeException(e);
+            } catch (IllegalAccessException e) {
+                throw new RuntimeException(e);
+            }
+            defaultAdapter.cancelDiscovery();
+//            socket=   defaultAdapter.getRemoteDevice(device.getAddress()).createRfcommSocketToServiceRecord(
+//                    UUID.fromString("38eb4a80-c570-11e3-9507-0002a5d5c51"));
             socket.connect();
         } catch (IOException e) {
-            try {
-                socket.close();
-            } catch (IOException closeException) {
-                return null;
-            }
+//            try {
+//                socket.close();
+//            } catch (IOException closeException) {
+//                return null;
+//            }
             return null;
         }
         return socket;

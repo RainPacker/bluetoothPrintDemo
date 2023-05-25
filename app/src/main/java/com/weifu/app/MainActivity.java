@@ -312,6 +312,7 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
     @Override
     public void onOpened(EMDKManager emdkManager) {
         this.emdkManager = emdkManager;
+
         // Acquire the barcode manager resources
         initBarcodeManager();
         // Enumerate scanner devices
@@ -391,6 +392,7 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
 
     private void initBarcodeManager(){
         barcodeManager = (BarcodeManager) emdkManager.getInstance(EMDKManager.FEATURE_TYPE.BARCODE);
+        Toast.makeText(MainActivity.this,"barcode"+barcodeManager.toString(),Toast.LENGTH_LONG);
         // Add connection listener
         if (barcodeManager != null) {
             barcodeManager.addConnectionListener(new BarcodeManager.ScannerConnectionListener() {
