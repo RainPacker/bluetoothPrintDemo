@@ -15,10 +15,14 @@ import android.os.Build;
 //import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.URLUtil;
@@ -43,7 +47,9 @@ import com.symbol.emdk.barcode.ScannerException;
 import com.symbol.emdk.barcode.ScannerInfo;
 import com.symbol.emdk.barcode.ScannerResults;
 import com.symbol.emdk.barcode.StatusData;
+import com.weifu.action.PermissionsResultAction;
 import com.weifu.app.js.JsBridge;
+import com.weifu.utils.PermissionsManager;
 
 import net.posprinter.posprinterface.IMyBinder;
 
@@ -89,9 +95,13 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        this.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN);
         super.onCreate(savedInstanceState);
         initReceiver();
-        getPermission();
+     //   getPermission();
+        requestPermissions();
         createClient();
         try {
             EMDKResults results = EMDKManager.getEMDKManager(getApplicationContext(), this);
@@ -105,6 +115,7 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
 
         //隐藏ActionBar
         Objects.requireNonNull(getSupportActionBar()).hide();
+
         setContentView(R.layout.activity_main);
         //WebView加载页面
         webView = findViewById(R.id.web_view);
@@ -475,6 +486,7 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
             int permissionCheck = 0;
             permissionCheck = this.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION);
             permissionCheck += this.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION);
+            permissionCheck += this.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION);
 
             if (permissionCheck != PackageManager.PERMISSION_GRANTED) {
                 //未获得权限
@@ -508,5 +520,32 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
             // 如果想展示加载动画，则增加一个drawable布局后，在onCreate时展示，在progress=100时View.GONE即可
         }
     }
+
+    private void requestPermissions() {
+        PermissionsManager.getInstance().requestAllManifestPermissionsIfNecessary(this, permissionsResultAction);
+    }
+
+    private PermissionsResultAction permissionsResultAction = new PermissionsResultAction() {
+        @Override
+        public void onGranted() {
+
+        }
+
+        @Override
+        public void onDenied(String permission) {
+
+        }
+
+        @Override
+        public void onEnd() {
+            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                @Override
+                public void run() {
+//                    doStartCompleted();
+//                    startMainActivity();
+                }
+            }, 3000);
+        }
+    };
 
 }

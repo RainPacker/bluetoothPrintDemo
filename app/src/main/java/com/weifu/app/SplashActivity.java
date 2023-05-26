@@ -4,12 +4,16 @@ import android.app.Activity;
 import android.content.Intent;
 import android.os.Handler;
 import android.os.Bundle;
+import android.os.Looper;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.Window;
 import android.view.WindowManager;
 
 import androidx.appcompat.app.AppCompatActivity;
+
+import com.weifu.action.PermissionsResultAction;
+import com.weifu.utils.PermissionsManager;
 
 import java.util.Objects;
 
@@ -24,24 +28,34 @@ public class SplashActivity extends AppCompatActivity {
  
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+//        if ((getIntent().getFlags() & Intent.FLAG_ACTIVITY_BROUGHT_TO_FRONT) != 0) {
+//            finish();
+//            return;
+//        }
+
+
         super.onCreate(savedInstanceState);
         this.requestWindowFeature(Window.FEATURE_NO_TITLE);
         this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
         Objects.requireNonNull(getSupportActionBar()).hide();
         setContentView(R.layout.act_spread_layout);
+
+
  
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
- 
+
                 startMainActivity();
                 Log.d(TAG, "run: 当前线程为："+Thread.currentThread().getName());
             }
- 
-            
+
+
         },2000);
     }
+
+
  
     /**
      * 跳转主界面
