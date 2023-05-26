@@ -6,8 +6,12 @@ import android.os.Handler;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.MotionEvent;
+import android.view.Window;
+import android.view.WindowManager;
 
 import androidx.appcompat.app.AppCompatActivity;
+
+import java.util.Objects;
 
 
 public class SplashActivity extends AppCompatActivity {
@@ -21,6 +25,10 @@ public class SplashActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        this.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        Objects.requireNonNull(getSupportActionBar()).hide();
         setContentView(R.layout.act_spread_layout);
  
         handler.postDelayed(new Runnable() {
@@ -32,7 +40,7 @@ public class SplashActivity extends AppCompatActivity {
             }
  
             
-        },3000);
+        },2000);
     }
  
     /**
@@ -63,10 +71,10 @@ public class SplashActivity extends AppCompatActivity {
  
     @Override
     protected void onDestroy() {
- 
+
         // 移除延迟函数
         handler.removeCallbacks(null);
- 
+
         super.onDestroy();
     }
 }

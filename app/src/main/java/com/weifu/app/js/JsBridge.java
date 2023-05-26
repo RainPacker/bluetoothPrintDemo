@@ -331,19 +331,28 @@ public class JsBridge implements ProcessData {
                         UUID uui2d = UUID.fromString("38eb4a82-c570-11e3-9507-0002a5d5c51b");
                       //  String data = "~hi^XA^FO20,20^BY3^B3N,N,150,Y,N^FDHello Yangyang!^FS^XZ\\r\\nZ";
                      //   String data = "<hr>11111<hr>";
-                        String data ="^XA" +
-                                "" +
-                                "^CI26  //ASCII Transparency和多字节亚洲编码" +
-                                "" +
-                                "^SEE:GB18030.DAT " +
-                                "" +
-                                "^CW1,E:SIMSUN.FNT" +
-                                "" +
-                                "^FO200,200^A1N,48,48^FD中文^FS" +
-                                "" +
-                                "^FT448,288^BQ2,2,10^A1N,48,48^FD中文^FS" +
-                                "" +
-                                "^XZ\\r\\nz";
+                        String data = "\n" +
+                                "^XA\n" +
+                                "^CW1,E:MSUNG.FNT \n" +
+                                "^CI28  \n" +
+                                "^PW837\n" +
+                                "^LL1427\n" +
+                                "^LS0\n" +
+                                "^FO12,835^GB884,588,5^FS\n" +
+                                "^FT39,919^A1N,23,23^FH\\^CI28^FD描述1：^FS^CI27\n" +
+                                "^FT36,999^A1N,23,23^FH\\^CI28^FD旧物料号2：^FS^CI27\n" +
+                                "^FT39,1087^A1N,23,23^FH\\^CI28^FD批次号3：^FS^CI27\n" +
+                                "^FT39,1154^A1N,23,23^FH\\^CI28^FD仓位4:^FS^CI27\n" +
+                                "^FT36,1226^A1N,23,23^FH\\^CI28^FD成本中心代码5:^FS^CI27\n" +
+                                "^FT39,1322^A1N,23,23^FH\\^CI28^FD成本中心描述6:^FS^CI27\n" +
+                                "^FT39,1396^A1N,23,23^FH\\^CI28^FD数量7:^FS^CI27\n" +
+                                "^FT120,1396^A1N,23,23^FH\\^CI28^FD{qty}^FS^CI27\n" +
+                                "^FT235,1396^A1N,23,23^FH\\^CI28^FD供应商8：^FS^CI27\n" +
+                                "^FT313,1396^A0N,23,23^FH\\^CI28^FD${sup}^FS^CI27\n" +
+                                "^FO420,933\n" +
+                                "^BQN,2,8,N,Y,Y^FDMM,A37-40f-4644-8-a^FS\n" +
+                                "^PQ1,0,1,Y\n" +
+                                "^XZ\n";
 //                        String data ="~hi^XA"+
 //                                "^FX Top section with logo, name and address." +
 //                                "^CF0,60" +
@@ -415,7 +424,7 @@ public class JsBridge implements ProcessData {
                     }
                 }else {
                     showToast("蓝牙连接失败");
-                    progressDialog.dismiss();
+
                 }
             }
         });

@@ -18,6 +18,7 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.URLUtil;
@@ -26,6 +27,7 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -59,15 +61,18 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
     private Scanner scanner = null;
     private List<ScannerInfo> deviceList = null;
     private int scannerIndex = 0; // Keep the selected scanner
+    private static final int PROCESS_BAR_MAX = 100;
 
     String TAG = getClass().getSimpleName();
-    private static final String LOADRL ="http://10.1.4.147:9001/" ;
+  //  private static final String LOADRL ="http://10.1.4.147:9001/" ;
+    private static final String LOADRL ="http://10.94.31.149:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10001;
     ValueCallback<Uri> mFilePathCallback;
     ValueCallback<Uri[]> mFilePathCallbackArray;
     private IMyBinder printerBinder;
     private BluetoothStateReceiver mBluetoothStateReceiver;
+    private ProgressBar progressBar;
     BluetoothClient mClient;
     public final IMyBinder getPrinterBinder() {
         return printerBinder;
@@ -192,8 +197,13 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
         });
         webView.addJavascriptInterface(new JsBridge(this), "JsBridge");
 
+        webView.setWebViewClient(new MyClient());
+        webView.setWebChromeClient(new MyWebChromeClient());
+
         // 这里填你需要打包的 H5 页面链接
         webView.loadUrl(LOADRL);
+        progressBar = findViewById(R.id.progress_bar);
+        progressBar.setVisibility(View.VISIBLE);
 
         //显示一些小图片（头像）
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -482,6 +492,21 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
    public BluetoothClient getClient(){
         return this.mClient;
    }
-
+    class MyClient extends WebViewClient {
+    }
+    class MyWebChromeClient extends WebChromeClient {
+        // 监听网页进度 newProgress进度值在0-100
+        @Override
+        public void onProgressChanged(WebView view, int newProgress) {
+            super.onProgressChanged(view, newProgress);
+            Log.d(TAG, "newProgress:" + newProgress);
+            // 进行进度条更新
+            if (newProgress == PROCESS_BAR_MAX) {
+                progressBar.setVisibility(View.GONE);
+            }
+            progressBar.setProgress(newProgress);
+            // 如果想展示加载动画，则增加一个drawable布局后，在onCreate时展示，在progress=100时View.GONE即可
+        }
+    }
 
 }
