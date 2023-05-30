@@ -104,10 +104,10 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
         requestPermissions();
         createClient();
         try {
-            EMDKResults results = EMDKManager.getEMDKManager(getApplicationContext(), this);
+            EMDKResults results = EMDKManager.getEMDKManager(MainActivity.this, this);
             if (results.statusCode != EMDKResults.STATUS_CODE.SUCCESS) {
                 Log.e(TAG,"EMDKManager object request failed!");
-                return;
+               // return;
             }
         }catch (Exception e){
 
@@ -333,7 +333,7 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
     @Override
     public void onOpened(EMDKManager emdkManager) {
         this.emdkManager = emdkManager;
-
+         Toast.makeText(MainActivity.this,"opended",Toast.LENGTH_SHORT);
         // Acquire the barcode manager resources
         initBarcodeManager();
         // Enumerate scanner devices

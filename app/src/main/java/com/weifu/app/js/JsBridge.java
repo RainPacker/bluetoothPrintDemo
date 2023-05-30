@@ -329,30 +329,55 @@ public class JsBridge implements ProcessData {
                         // connectDevice(deviceList.get(0),2);
                         UUID uuid = UUID.fromString("38eb4a80-c570-11e3-9507-0002a5d5c51b");
                         UUID uui2d = UUID.fromString("38eb4a82-c570-11e3-9507-0002a5d5c51b");
-                      //  String data = "~hi^XA^FO20,20^BY3^B3N,N,150,Y,N^FDHello Yangyang!^FS^XZ\\r\\nZ";
+                   //     String data = "~hi^XA^FO220,220^BY3^B3N,N,150,Y,N^FDHello Yangyang!^FS^XZ\\r\\nZ";
+                        String data = "~hi^XA ^CW1,E:HANS.TTF ^CI28 ^FO50,60^A1N,20,20^FD简体中文abcd1234^FS ^FO50,160^A1N,30,30^FD简体中文abcd1234^FS ^FO50,260^A1N,50,50^FD简体中文abcd1234^FS ^XZ";
+                       // String data = "^XA^CW1,E:SIMSUN.TTF^SEE:GB18030.DAT^CI26^FO50,60^A1N,20,20^FD简体中文^FS^XZ\\r\\nz";
+//                        String data = "！ 0 200 200 400 1\n" +
+//                                "编码 GB18030\n" +
+//                                "B 快拆 20 20 M 2 U 4\n" +
+//                                "MM,B0004中文\n" +
+//                                "结束QR\n" +
+//                                "打印";
+                       // String data = "";
                      //   String data = "<hr>11111<hr>";
-                        String data = "\n" +
-                                "^XA\n" +
-                                "^CW1,E:MSUNG.FNT \n" +
-                                "^CI28  \n" +
-                                "^PW837\n" +
-                                "^LL1427\n" +
-                                "^LS0\n" +
-                                "^FO12,835^GB884,588,5^FS\n" +
-                                "^FT39,919^A1N,23,23^FH\\^CI28^FD描述1：^FS^CI27\n" +
-                                "^FT36,999^A1N,23,23^FH\\^CI28^FD旧物料号2：^FS^CI27\n" +
-                                "^FT39,1087^A1N,23,23^FH\\^CI28^FD批次号3：^FS^CI27\n" +
-                                "^FT39,1154^A1N,23,23^FH\\^CI28^FD仓位4:^FS^CI27\n" +
-                                "^FT36,1226^A1N,23,23^FH\\^CI28^FD成本中心代码5:^FS^CI27\n" +
-                                "^FT39,1322^A1N,23,23^FH\\^CI28^FD成本中心描述6:^FS^CI27\n" +
-                                "^FT39,1396^A1N,23,23^FH\\^CI28^FD数量7:^FS^CI27\n" +
-                                "^FT120,1396^A1N,23,23^FH\\^CI28^FD{qty}^FS^CI27\n" +
-                                "^FT235,1396^A1N,23,23^FH\\^CI28^FD供应商8：^FS^CI27\n" +
-                                "^FT313,1396^A0N,23,23^FH\\^CI28^FD${sup}^FS^CI27\n" +
-                                "^FO420,933\n" +
-                                "^BQN,2,8,N,Y,Y^FDMM,A37-40f-4644-8-a^FS\n" +
-                                "^PQ1,0,1,Y\n" +
-                                "^XZ\n";
+//                        String data = "^XA\n" +
+//                                "~TA000\n" +
+//                                "~JSN\n" +
+//                                "^LT0\n" +
+//                                "^MNW\n" +
+//                                "^MTT\n" +
+//                                "^PON\n" +
+//                                "^PMN\n" +
+//                                "^LH0,0\n" +
+//                                "^JMA\n" +
+//                                "^PR6,6\n" +
+//                                "~SD15\n" +
+//                                "^JUS\n" +
+//                                "^LRN\n" +
+//                                "^CI27\n" +
+//                                "^PA0,1,1,0\n" +
+//                                "^XZ" +
+//                                "^XA\n" +
+//                                "^CW1,E:MSUNG.FNT \n" +
+//                                "^CI28  \n" +
+//                                "^PW837\n" +
+//                                "^LL1427\n" +
+//                                "^LS0\n" +
+//                                "^FO12,835^GB884,588,5^FS\n" +
+//                                "^FT39,919^A1N,23,23^FH\\^CI28^FD描述1：^FS^CI27\n" +
+//                                "^FT36,999^A1N,23,23^FH\\^CI28^FD旧物料号2：^FS^CI27\n" +
+//                                "^FT39,1087^A1N,23,23^FH\\^CI28^FD批次号3：^FS^CI27\n" +
+//                                "^FT39,1154^A1N,23,23^FH\\^CI28^FD仓位4:^FS^CI27\n" +
+//                                "^FT36,1226^A1N,23,23^FH\\^CI28^FD成本中心代码5:^FS^CI27\n" +
+//                                "^FT39,1322^A1N,23,23^FH\\^CI28^FD成本中心描述6:^FS^CI27\n" +
+//                                "^FT39,1396^A1N,23,23^FH\\^CI28^FD数量7:^FS^CI27\n" +
+//                                "^FT120,1396^A1N,23,23^FH\\^CI28^FD{qty}^FS^CI27\n" +
+//                                "^FT235,1396^A1N,23,23^FH\\^CI28^FD供应商8：^FS^CI27\n" +
+//                                "^FT313,1396^A0N,23,23^FH\\^CI28^FD${sup}^FS^CI27\n" +
+//                                "^FO0,933\n" +
+//                                "^BQN,2,8,N,Y,Y^FDMM,A37-40f-4644-8-a^FS\n" +
+//                                "^PQ1,0,1,Y\n" +
+//                                "^XZ\n";
 //                        String data ="~hi^XA"+
 //                                "^FX Top section with logo, name and address." +
 //                                "^CF0,60" +
@@ -394,7 +419,7 @@ public class JsBridge implements ProcessData {
 //                                "^XZ\\r\\nZ";
                         byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
                        List<Byte> byteList = new ArrayList<Byte>(Arrays.asList(PrintUtil.toObjects(bytes)));
-                        List<List<Byte>> lists = PrintUtil.spliceArrays(byteList, 24);
+                        List<List<Byte>> lists = PrintUtil.spliceArrays(byteList, 60);
                         for (int i = 0; i < lists.size(); i++) {
                             List<Byte> byteList1 = lists.get(i);
                             Byte[] spilce = byteList1.toArray(new Byte[byteList1.size()]);
@@ -412,14 +437,14 @@ public class JsBridge implements ProcessData {
                         //  String data = "~hi^XA^FO20,20^BY3^B3N,N,150,Y,N^FDHello WeChat!^FS^XZ\\r\\nZ";
                         Log.d(TAG, "onResponse: "+uuid);
                         UUID cuuid = profile.getServices().get(3).getCharacters().get(0).getUuid();
-                        mClient.write(addrs,uuid,uui2d , data.getBytes(StandardCharsets.UTF_8), new BleWriteResponse() {
-                            @Override
-                            public void onResponse(int code) {
-                                if (code == REQUEST_SUCCESS) {
-
-                                }
-                            }
-                        });
+//                        mClient.write(addrs,uuid,uui2d , data.getBytes(StandardCharsets.UTF_8), new BleWriteResponse() {
+//                            @Override
+//                            public void onResponse(int code) {
+//                                if (code == REQUEST_SUCCESS) {
+//
+//                                }
+//                            }
+//                        });
 
                     }
                 }else {
