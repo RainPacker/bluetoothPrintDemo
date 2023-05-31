@@ -308,12 +308,12 @@ public class JsBridge implements ProcessData {
 
     public void connectBle4(String addrs,String type){
         BluetoothClient mClient = activity.getClient();
-
+        showProgress("连接中...");
         BleConnectOptions options = new BleConnectOptions.Builder()
 
                 .setConnectRetry(3)   // 连接如果失败重试3次
 
-                .setConnectTimeout(30000)   // 连接超时30s
+                .setConnectTimeout(3000)   // 连接超时3s
 
                 .setServiceDiscoverRetry(3)  // 发现服务如果失败重试3次
 
@@ -325,6 +325,8 @@ public class JsBridge implements ProcessData {
             public void onResponse(int code, BleGattProfile profile) {
 
                 if (code == REQUEST_SUCCESS) {
+                    Log.d(TAG, "onResponse: code:"+code);
+                    progressDialog.dismiss();
                     showToast("蓝牙连接成功");
                     if(type.equals("2")){
                         // connectDevice(deviceList.get(0),2);
@@ -488,6 +490,7 @@ public class JsBridge implements ProcessData {
 
                     }
                 }else {
+                    progressDialog.dismiss();
                     showToast("蓝牙连接失败");
 
                 }
@@ -499,12 +502,12 @@ public class JsBridge implements ProcessData {
     public void connectBle4New(String addrs,String type,String data){
         String printData = data;
         BluetoothClient mClient = activity.getClient();
-
+        showProgress("连接中...");
         BleConnectOptions options = new BleConnectOptions.Builder()
 
                 .setConnectRetry(3)   // 连接如果失败重试3次
 
-                .setConnectTimeout(30000)   // 连接超时30s
+                .setConnectTimeout(4000)   // 连接超时4s
 
                 .setServiceDiscoverRetry(3)  // 发现服务如果失败重试3次
 
@@ -517,6 +520,7 @@ public class JsBridge implements ProcessData {
 
                 if (code == REQUEST_SUCCESS) {
                     showToast("蓝牙连接成功");
+                    progressDialog.dismiss();
                     if(type.equals("2")){
                         // connectDevice(deviceList.get(0),2);
                         UUID uuid = UUID.fromString("38eb4a80-c570-11e3-9507-0002a5d5c51b");
@@ -554,6 +558,7 @@ public class JsBridge implements ProcessData {
 
                     }
                 }else {
+                    progressDialog.dismiss();
                     showToast("蓝牙连接失败");
 
                 }
