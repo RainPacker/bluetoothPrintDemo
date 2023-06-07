@@ -332,133 +332,44 @@ public class JsBridge implements ProcessData {
                         // connectDevice(deviceList.get(0),2);
                         UUID uuid = UUID.fromString("38eb4a80-c570-11e3-9507-0002a5d5c51b");
                         UUID uui2d = UUID.fromString("38eb4a82-c570-11e3-9507-0002a5d5c51b");
-                        String data ="\n" +
-                                "^XA\n" +
-                                "^CW0,E:HANS.TTF ^CI28\n" +
-                                "^PW591\n" +
-                                "^LL827\n" +
-                                "^LS0\n" +
-                                "^FT491,10^A0R,25^FH\\^CI28^FD旧物料号:123456789^FS^CI28\n" +
-                                "^FT400,10^A0R,25^FH\\^CI28^FD批次号:12345679^FS^CI28\n" +
-                                "^FT318,10^A0R,25^FH\\^CI28^FD仓位:A1-01-01^FS^CI28\n" +
-                                "^FT216,10^A0R,25^FH\\^CI28^FD成本中心代码:12345678^FS^CI28\n" +
-                                "^FT133,10^A0R,25^FH\\^CI28^FD成本中心描述:测试物料1^FS^CI28\n" +
-                                "^FT56,10^A0R,25^FH\\^CI28^FD数量:1^FS^CI28\n" +
-                                "^FT56,264^A0R,25^FH\\^CI28^FD供应商:12345678^FS^CI28\n" +
-                                "^FO203,349^BQN,2,8,N,Y,Y^FDMM,Azhangyangyang^FS\n" +
-                                "^PQ1,0,1,Y\n" +
-                                "^FO472,275^GFA,1029,3376,8,:Z64:eJzF17FO3EAQBuBxHMlQmS6JFLGvkC5QmUfJI1wXIp1uF1HcY/Aqjigo8wgYpaCMEUWMZN1kZ+Zf4zMcAQTJCfSh8956d3ZmfBDJK+8UZtGz6FhenedXMYgrvVnQW3tu4QpyDXVtshwZmUcbWyv3Y2WAWEwHVLhQ4kLGmNKPLtT4RLqXmsM40nQqv1x8Wl0Er8WhgX2KQ4AN7NPi6+GwbPuM7etIfuhCj7jI3OlClj5RwSLFYxqXYiLxWnzkgkncLdSq87rqorNzzjqc7954H5zsYZwG8WqeHedr2JbQ9je2T+aQ3D8zhxKkDVKSNlpC2qP7XoXlVEzoALs1sw3SVL/B6o5zrM9GRDX3RFlDqeeTXEHuCpzbGTyd+LPTLOWLztI2quV7hbxtUdhm3Ab22R3aurYgJfc2+H7i1tQ5HCIx1O1Qr/qH7Q/53KW8blNe10/N5xza/mVGB+mOV7AtoOXL/9ZB2nkorzU381vdqGs32GWMsOXDilJcClhOdBOrvxj7cWFqhnVeDjH2N+tjHmYwvvNU7TFHVZKTAVo+OTwHHPq/rL8my3qtJNv+kA6IQ5thH0lKVtBN8iibOGRskfLJQZli/bkYC80KKtavLXvL2yNVZkkOz60+1UOb6qGBfaqLQZxXwBshHfzMdhoWtsDgQ1aXpuxRZPkRlyrz8nv0KHaXm+gx86V4Bn9Bvt9qooMl36hFrLaleqGW0MEK130c/ygv4Sk8hpm5IHNO38ydffXw4wd1tmt+cdvqgTtSydX+SG1c2Be7PGyLvZxjSHXkNtbFM20KScrg6wxS0ke7aCVWdewP0aKmUsxqyls8j9ScaKbW9ElttR4pl0IqQ0wLSUhINPKttvOc49S7auxDYWwvrSnK5bnpH+8BnMFDuIAx3wqeu9afRukVvI5mJ22Mt93viVa3LsUSxnI7Y38i+zzjA43PJdOav1/cGZxDu/9XxDv5eaQ0vnew2GDOTqWqOJc+RyX9kD5Hb/T7k9P+FX9p+H+I6M73qj8PogXh:0B11"+
-                     //           "^FO472,275^GFA,1665,3376,8,:Z64:eJydVs1q21gUPpIjMA7YLlSr2ZjMJjhQb0sFsQKTvQK+L9FF/QbOnWRjOtC8gmg3Qh1olyKCtExfxEsTBmsrhkGe83ftxNTTmdwEbr58Ovf8n3sBaL3NeDs3CYA/LMuyAM/QSkYVr6WRlUQlr8LhWcOr3sdPvyufDwiQysvGsmpjYt6j8lYx04D6l7QH+o8WSqf6QUI7Kac93PcBnrCyegLp8Nk9kZjQ3l0360cSJ/qBpxg+iQ14BMUnfxifF0/yv8wEkv/r5t6SblD/U/VfVE/FeFDjkZcAufjN1H9yf6Lu8xFGvaEE0hHkPh9Rqv+hHnGIFqwXDyQi/cBz8ai2OUg0xI/joynAIwW3hMcjk9ds/WgpTJCof4Wa3yf/8T9to/ZzfG7FGDpe45c9uf7uNf5JIHwq/uHRFIDkcgGnf9+ta8ITEL6Aw0JwmEwXMPoTekuHd/kZyUO33sfvkw8Vd1i+xykkTCEg3uE2FtzvKC/xDJMj3g8Lh9vzOUa4I/HHeB7hGsB2IT+fX80V/QLEH/m59LsHcDzP5pnNs1j4eJi/xwOUh35/mOfZfO4w8bjSoWIPGGfDLOZ1IHw+zJKtPK5OJrXneMJSEa/ze/x5K/ndyF+5/ug7HMoHsc/4fSb9d4YndPCANNPyZDeGeZppePq8d7JjeLx+hNs/won+MZPMtB/Mr5R2LWeuX+lv8VjqM9X6Ntz/+POf54evvJs/AHmjI8D1r2twkwiuFh3uXypB5lOpH4ebhdTfPr5aSP39i3z3/8gfpg/qV/ZevcUD4Pr22PYE2PbOkrIbS4C3841GCLf/X9bT+LQ0PoHinsbP4Z+UDxWPNf4OR2WuvMy/0Qq1U/wpmzj/I56+J4VkF/qzWvMvmJqXl05CmGrn7vKh4nGjeDP/rWKpp55ePaG6f6juB1pgXXFfxjsqVf9TFw9Q/zcDNdL6CRV3xf9NPfnKywcJey/zP3A96+7Hzbz3m1qs9Wi+0Tp299mUq3/bD6Q+d+mLQes/U/Mmat7tpj80f1btBbXP9sVgOMXHC0bAYrpiNBAiCwUaSJh/R9ZW72yF2JjgDPlfy/JDUdoQxc8vDIyv1k1Vr605R5wg/1F4Opx4fv8sKxsqJvtYXnG3qZtV3djAXJgA5VtlWl4jH5gzE1yQ/YvqhuUvGEdlwbzDY5S/If0q73g6nPjRtyXLG0/lQfjnIPgU6uYd6k/6z1j+Zfsl8/Fzj/lBt83yEArG7oss8hDGATxD3K19215bKUiD4b3N849l5vrFvf+2/fHE91+MDe1RfjBCgP7FwPjyK80PnH8xNT/fvzgfsH9jfCzQDPgK/gKkCRj7NCFo/mHzMSbqbgkeNyi+PahBfSsYV2sluzc5QAniWxZeEUYVIdVudwlj+j7A+zYm/vak/MzYoEmtVW81vVluMfLRAx7lm9ldHSseKJ8ofqPyhvAE7/9r5CH6bM5YX3L5B8rDuHZ4l59+Q3l6P+zhZyx/upUvRT/2EuvH96PoV7zLjxuy/wvNP8Scv2viA8bo36fqZvWG/Dfn/D5plR9I/wb7zYr07+Vb+Pyk+b9Xfr0i/x/xA+UnHP9K43+u8f95J/4vKP47+Sm+kz+YhMzDq9ZvxMMBlhheIFhSdP88p/qh9z0VjU5pcNf85n3wD46oNXg=:E1D0"+
-                                "^XZ";
-                   //     String data = "~hi^XA^FO220,220^BY3^B3N,N,150,Y,N^FDHello Yangyang!^FS^XZ\\r\\nZ";
-                     //   String data = "^XA^FO50,50^GFA,3120,3120,52,IFCJ07FFCJ0IFE1NFE1PFE0OF8IFEJ03IF8R01FFC7FCU0IF8IFCJ0IFCJ0IFC1NFE1PF00OF0IFEJ03IF8R01FFC7FCT01IF,IFCJ0IFCJ0IFC1NFE1OF800OF0IFEJ03IFS01FFC7FC07VF,IFCJ0IFCI01IFC3NFE1NFCI0OF0IFEJ07IFS01FFC7FC07VF,IFCI01IFCI01IF83NFC1NFI01OF0IFEJ07IFS01FFC7FC07UFE,IFEI01IFCI03IF83NFC3MF8I01OF0IFEJ07IF003WF0VFE,IFEI03IFCI03IF03NFC3LFCJ01OF0IFEJ07IF007WF0VFC,IFEI03IFCI03IF03NFC3KFEK01OF1IFCJ07IF00WFE1VFC,7FFEI03IFCI07IF03NFC3KFL01NFE1IFCJ07IF01WFE1VF8,7FFEI07IFCI07FFE07NFC3JFC00EI01NFE1IFCJ0IFE01WFE3VF,7FFEI07IFEI07FFE07NF83IFE007CI03NFE1IFCJ0IFE01WFC3UFC,7FFEI0JFEI0IFE07IFL07IF003FCI03IF8K01IFCJ0IFE03WFC,7FFEI0JFEI0IFC07IFL07FF801FFCI03IF8K01IFCJ0IFE03WFC03FF8003FFJ0FFE,7FFEI0JFEI0IFC07IFL07FC007FFCI03IF8K03IF8J0IFE03WF803FF8007FF8001FFE,7FFE001JFE001IF807IFL07F003IFCI03IF8K03IF8J0IFE03WF803FF8003FF8001FFC,7FFE001JFE001IF807IFL07801JFCI03IF8K03IF8I01IFC03FF8N01FFCJ03FF8003FF8001FFC,7FFE003JFE001IF80IFEL0400KF8I03IF8K03IF8I01IFC03FF8N01FFCJ03FFC003FF8003FFC,7FFE003JFE003IF00IFEO0KF8I07IFL03IF8I01IFC03FF8NFDFFCJ03FFC003FF8003FF8,7FFE003JFE003IF00IFEO0KF8I07IFL03IF8I01IFC07FF8NF9FFCJ01FFC003FF8007FF8,7FFE007FF7FE007FFE00IFEO0KF8I07IFL07IFJ01IFC07FF8NF9FFCJ01FFC003FF8007FF,7FFE007FF7FE007FFE00IFEN01KF8I07IFL07IFJ01IFC07FF1NF1FFCJ01FFC003FFC007FF,7FFE007FE7FE007FFE00IFEN01KF8I07IFL07IFJ03IF807FF1NF1FFC,3FFE00FFE7FF00IFC01IFCN01KF8I07IFL07IFJ03IF807FF3NF1FFCJ03TFE,3IF00FFE7FF00IFC01IFCN01KFJ0IFEL07IFJ03IF807FF3MFE1FFCJ03UF,3IF01FFC7FF00IFC01NFEI01KFJ0IFEL07IFJ03IF80IF3MFE1FFCJ07TFE,3IF01FFC7FF01IF801NFEI01KFJ0IFEL07IFJ03IF80IFO01FFCJ07TFE,3IF01FFC7FF01IF801NFEI03KFJ0OF0IFEJ03IF80FFEO01KF80UFC,3IF03FF87FF01IF001NFEI03KFJ0NFE0IFEJ03IF80FFE07FEK01KF80UFC,3IF03FF87FF03IF003NFEI03KFJ0NFE0IFEJ07IF00FFE0FFEK01KF00UF8,3IF07FF87FF03IF003NFEI03JFEI01NFE0IFEJ07IF00FFE7NFDJFE01UF8,3IF07FF07FF03FFE003NFCI03JFEI01NFE0IFEJ07IF00FFE7NFDJFC01UF8,3IF07FF07FF07FFE003NFCI03JFEI01NFE0IFEJ07IF01FFE7NF9JF803UF,3IF0IF07FF07FFC003NFCI07JFEI01NFE1IFCJ07IF01FFCOF9JF8,3IF0FFE07FF07FFC003NFCI07JFEI01NFC1IFCJ07IF01FFCOF9JFS0JF8,3IF0FFE07FF0IFC003NFCI07JFEI01NFC1IFCJ0IFE01FFCOF1IFER03JF,3IF1FFC07FF0IF8007IFO07JFCI01NFC1IFCJ0IFE01FFDOF1IFCR0JFC,1IF1FFC07FF1IF8007IFO07JFCI03NFC1IFCJ0IFE01FFDNFE1IF8Q03JF,1IF1FFC03FF1IFI07IFO07JFCI03IF8K01IFCJ0IFE03FFDNFE1IF001WFC,1IF3FF803FF1IFI07IFO0KFCI03IF8K01IFCJ0IFE03FFC1FFCK01FFE003WFC,1IF3FF803FF3IFI07IFO0KFCI03IF8K01IFCI01IFE03FF81FFCK03FFE003WFC,1IF3FF003FF3FFEI07IFO0KFCI03IF8K01IFCI01IFC03FF81FFE0IFC7FFC003WF8,1IF7FF003FF3FFEI0IFEO0KF8I03IF8K01IFCI01IFC03FF81IF1IF87FFC007WF8,1IF7FF003FF7FFEI0IFEO0KF8I07IFL01IFCI03IFC03FF81LFE0IFC007WF,1IF7FE003FF7FFCI0IFEO0KF8I07IFL01IFCI03IFC03FF81LFC1IFC00XF,1KFE003KFCI0IFEO0KF8I07IFL01IFEI07IF807FF81LF83IFC00WFE,1KFC003KF8I0IFEN01KF8I07IFL01JFI0JF807FF00LF07IFC01WFE,1KFC003KF8I0IFEN01KF8I07IFL01JF803JF007FF007JFE0JFC01WFC,1KFC003KF8001IFCN01KF8I07IFM0QF007FF003JF81JFCP03FF8,1KF8003KFI01IFCN01KFJ0IFEM0PFE007FF001JF01JFCP03FF8,1KF8003KFI01NFEI01KFJ0IFEM0PFE007FFI0JF03JFCP07FF8,0KFI01JFEI01NFEI01KFJ0IFEM07OFC00IF001JF8001FFEP07FF8,0KFI01JFEI01NFEI03KFJ0IFEM07OF800IF003JFC001JFCK03KF8,0KFI01JFEI01NFEI03KFJ0IFEM03OF800FFE1LFE001JFCK07KF8,0JFEI01JFCI01NFEI03KFJ0IFEM01OFI0FFE1MF001JFCK07KF,0JFEI01JFCI03NFEI03JFEJ0IFCN0NFCI0FFE3MF801JF8K0LF,0JFCI01JFCI03NFCI03JFEI01IFCN07MF8I0FFE3MFE00JF8K0LF,0JFCI01JF8I03NFCI03JFEI01IFCN03MFI01FFE3IFE7IF00JFK01LF,0JFCI01JF8I03NFCI07JFEI01IFCO0LFCI01FFE7IFC3IF80JFK03KFE,0JF8I01JFJ03NFCI07JFEI01IFCO03JFEJ01FFC7IF81IFC07IFK03KFE,0JF8I01JFJ03NFCI07JFEI01IFCP03FFEK01FFC7FFE00IFE01FFEK07KF8,^FS ^XZ";
-                      //  String data = "~hi^XA ^CW1,E:HANS.TTF ^CI28 ^FO50,60^A1N,20,20^FD简体中文abcd1234^FS ^FO50,160^A1N,30,30^FD简体中文abcd1234^FS ^FO50,260^A1N,50,50^FD简体中文abcd1234^FS ^XZ";
-//                        String data = "^XA" +
-//                                " ^CW1,E:HANS.TTF ^CI28\n" +
-//                                "^PW837\n" +
-//                                "^LL1427\n" +
-//                                "^LS0\n" +
-//                                "^FO12,835^GB884,588,5^FS\n" +
-//                                "^FT39,919^A1N,23,23^FH\\^CI28^FD描述1:^FS^CI28\n" +
-//                                "^FT36,999^A1N,23,23^FH\\^CI28^FD旧物料号2:^FS^CI28\n" +
-//                                "^FT39,1087^A1N,23,23^FH\\^CI28^FD批次号3:^FS^CI28\n" +
-//                                "^FT39,1154^A1N,23,23^FH\\^CI28^FD仓位4:^FS^CI28\n" +
-//                                "^FT36,1226^A1N,23,23^FH\\^CI28^FD成本中心代码5:^FS^CI28\n" +
-//                                "^FT39,1322^A1N,23,23^FH\\^CI28^FD成本中心描述6:^FS^CI28\n" +
-//                                "^FT39,1396^A1N,23,23^FH\\^CI28^FD数量7:^FS^CI28\n" +
-//                                "^FT120,1396^A1N,23,23^FH\\^CI28^FD{qty}^FS^CI28\n" +
-//                                "^FT235,1396^A1N,23,23^FH\\^CI28^FD供应商8:^FS^CI28\n" +
-//                                "^FT313,1396^A0N,23,23^FH\\^CI28^FD${sup}^FS^CI28\n" +
-//                                "^FO341,933\n" +
-//                                "^BQN,2,8,N,Y,Y^FDMM,A37-40f-4644-8-a^FS\n" +
-//                                "^PQ1,0,1,Y\n" +
-//                                "^XZ";
-                       // String data = "^XA^CW1,E:SIMSUN.TTF^SEE:GB18030.DAT^CI26^FO50,60^A1N,20,20^FD简体中文^FS^XZ\\r\\nz";
-//                        String data = "！ 0 200 200 400 1\n" +
-//                                "编码 GB18030\n" +
-//                                "B 快拆 20 20 M 2 U 4\n" +
-//                                "MM,B0004中文\n" +
-//                                "结束QR\n" +
-//                                "打印";
-                       // String data = "";
-                     //   String data = "<hr>11111<hr>";
-//                        String data = "^XA\n" +
-//                                "~TA000\n" +
-//                                "~JSN\n" +
-//                                "^LT0\n" +
-//                                "^MNW\n" +
-//                                "^MTT\n" +
-//                                "^PON\n" +
-//                                "^PMN\n" +
-//                                "^LH0,0\n" +
-//                                "^JMA\n" +
-//                                "^PR6,6\n" +
-//                                "~SD15\n" +
-//                                "^JUS\n" +
-//                                "^LRN\n" +
-//                                "^CI27\n" +
-//                                "^PA0,1,1,0\n" +
-//                                "^XZ" +
+//                        String data ="\n" +
 //                                "^XA\n" +
-//                                "^CW1,E:MSUNG.FNT \n" +
-//                                "^CI28  \n" +
-//                                "^PW837\n" +
-//                                "^LL1427\n" +
+//                                "^CW0,E:HANS.TTF ^CI28\n" +
+//                                "^PW591\n" +
+//                                "^LL827\n" +
 //                                "^LS0\n" +
-//                                "^FO12,835^GB884,588,5^FS\n" +
-//                                "^FT39,919^A1N,23,23^FH\\^CI28^FD描述1：^FS^CI27\n" +
-//                                "^FT36,999^A1N,23,23^FH\\^CI28^FD旧物料号2：^FS^CI27\n" +
-//                                "^FT39,1087^A1N,23,23^FH\\^CI28^FD批次号3：^FS^CI27\n" +
-//                                "^FT39,1154^A1N,23,23^FH\\^CI28^FD仓位4:^FS^CI27\n" +
-//                                "^FT36,1226^A1N,23,23^FH\\^CI28^FD成本中心代码5:^FS^CI27\n" +
-//                                "^FT39,1322^A1N,23,23^FH\\^CI28^FD成本中心描述6:^FS^CI27\n" +
-//                                "^FT39,1396^A1N,23,23^FH\\^CI28^FD数量7:^FS^CI27\n" +
-//                                "^FT120,1396^A1N,23,23^FH\\^CI28^FD{qty}^FS^CI27\n" +
-//                                "^FT235,1396^A1N,23,23^FH\\^CI28^FD供应商8：^FS^CI27\n" +
-//                                "^FT313,1396^A0N,23,23^FH\\^CI28^FD${sup}^FS^CI27\n" +
-//                                "^FO0,933\n" +
-//                                "^BQN,2,8,N,Y,Y^FDMM,A37-40f-4644-8-a^FS\n" +
+//                                "^FT491,10^A0R,25^FH\\^CI28^FD旧物料号:123456789^FS^CI28\n" +
+//                                "^FT400,10^A0R,25^FH\\^CI28^FD批次号:12345679^FS^CI28\n" +
+//                                "^FT318,10^A0R,25^FH\\^CI28^FD仓位:A1-01-01^FS^CI28\n" +
+//                                "^FT216,10^A0R,25^FH\\^CI28^FD成本中心代码:12345678^FS^CI28\n" +
+//                                "^FT133,10^A0R,25^FH\\^CI28^FD成本中心描述:测试物料1^FS^CI28\n" +
+//                                "^FT56,10^A0R,25^FH\\^CI28^FD数量:1^FS^CI28\n" +
+//                                "^FT56,264^A0R,25^FH\\^CI28^FD供应商:12345678^FS^CI28\n" +
+//                                "^FO183,349^BQN,2,8,N,Y,Y^FDMA,BCPN2-B/20190902/024%M000000101104000151%Q24%C20016003_23%C20016041_1^FS\n" +
 //                                "^PQ1,0,1,Y\n" +
-//                                "^XZ\n";
-//                        String data ="~hi^XA"+
-//                                "^FX Top section with logo, name and address." +
-//                                "^CF0,60" +
-//                                "^FO50,50^GB100,100,100^FS" +
-//                                "^FO75,75^FR^GB100,100,100^FS" +
-//                                "^FO93,93^GB40,40,40^FS" +
-//                                "^FO220,50^FDIntershipping, Inc.^FS" +
-//                                "^CF0,30" +
-//                                "^FO220,115^FD1000 Shipping Lane^FS" +
-//                                "^FO220,155^FDShelbyville TN 38102^FS" +
-//                                "^FO220,195^FDUnited States (USA)^FS" +
-//                                "^FO50,250^GB700,3,3^FS" +
-//                                "" +
-//                                "^FX Second section with recipient address and permit information." +
-//                                "^CFA,30" +
-//                                "^FO50,300^FDJohn Doe^FS" +
-//                                "^FO50,340^FD100 Main Street^FS" +
-//                                "^FO50,380^FDSpringfield TN 39021^FS" +
-//                                "^FO50,420^FDUnited States (USA)^FS" +
-//                                "^CFA,15" +
-//                                "^FO600,300^GB150,150,3^FS" +
-//                                "^FO638,340^FDPermit^FS" +
-//                                "^FO638,390^FD123456^FS" +
-//                                "^FO50,500^GB700,3,3^FS" +
-//                                "" +
-//                                "^FX Third section with bar code." +
-//                                "^BY5,2,270" +
-//                                "^FO100,550^BC^FD12345678^FS" +
-//                                "" +
-//                                "^FX Fourth section (the two boxes on the bottom)." +
-//                                "^FO50,900^GB700,250,3^FS" +
-//                                "^FO400,900^GB3,250,3^FS" +
-//                                "^CF0,40" +
-//                                "^FO100,960^FDCtr. X34B-1^FS" +
-//                                "^FO100,1010^FDREF1 F00B47^FS" +
-//                                "^FO100,1060^FDREF2 BL4H8^FS" +
-//                                "^CF0,190" +
-//                                "^FO470,955^FDCA^FS"+
-//                                "^XZ\\r\\nZ";
+//                                "^FO472,275^GFA,1029,3376,8,:Z64:eJzF17FO3EAQBuBxHMlQmS6JFLGvkC5QmUfJI1wXIp1uF1HcY/Aqjigo8wgYpaCMEUWMZN1kZ+Zf4zMcAQTJCfSh8956d3ZmfBDJK+8UZtGz6FhenedXMYgrvVnQW3tu4QpyDXVtshwZmUcbWyv3Y2WAWEwHVLhQ4kLGmNKPLtT4RLqXmsM40nQqv1x8Wl0Er8WhgX2KQ4AN7NPi6+GwbPuM7etIfuhCj7jI3OlClj5RwSLFYxqXYiLxWnzkgkncLdSq87rqorNzzjqc7954H5zsYZwG8WqeHedr2JbQ9je2T+aQ3D8zhxKkDVKSNlpC2qP7XoXlVEzoALs1sw3SVL/B6o5zrM9GRDX3RFlDqeeTXEHuCpzbGTyd+LPTLOWLztI2quV7hbxtUdhm3Ab22R3aurYgJfc2+H7i1tQ5HCIx1O1Qr/qH7Q/53KW8blNe10/N5xza/mVGB+mOV7AtoOXL/9ZB2nkorzU381vdqGs32GWMsOXDilJcClhOdBOrvxj7cWFqhnVeDjH2N+tjHmYwvvNU7TFHVZKTAVo+OTwHHPq/rL8my3qtJNv+kA6IQ5thH0lKVtBN8iibOGRskfLJQZli/bkYC80KKtavLXvL2yNVZkkOz60+1UOb6qGBfaqLQZxXwBshHfzMdhoWtsDgQ1aXpuxRZPkRlyrz8nv0KHaXm+gx86V4Bn9Bvt9qooMl36hFrLaleqGW0MEK130c/ygv4Sk8hpm5IHNO38ydffXw4wd1tmt+cdvqgTtSydX+SG1c2Be7PGyLvZxjSHXkNtbFM20KScrg6wxS0ke7aCVWdewP0aKmUsxqyls8j9ScaKbW9ElttR4pl0IqQ0wLSUhINPKttvOc49S7auxDYWwvrSnK5bnpH+8BnMFDuIAx3wqeu9afRukVvI5mJ22Mt93viVa3LsUSxnI7Y38i+zzjA43PJdOav1/cGZxDu/9XxDv5eaQ0vnew2GDOTqWqOJc+RyX9kD5Hb/T7k9P+FX9p+H+I6M73qj8PogXh:0B11"+
+//                     //           "^FO472,275^GFA,1665,3376,8,:Z64:eJydVs1q21gUPpIjMA7YLlSr2ZjMJjhQb0sFsQKTvQK+L9FF/QbOnWRjOtC8gmg3Qh1olyKCtExfxEsTBmsrhkGe83ftxNTTmdwEbr58Ovf8n3sBaL3NeDs3CYA/LMuyAM/QSkYVr6WRlUQlr8LhWcOr3sdPvyufDwiQysvGsmpjYt6j8lYx04D6l7QH+o8WSqf6QUI7Kac93PcBnrCyegLp8Nk9kZjQ3l0360cSJ/qBpxg+iQ14BMUnfxifF0/yv8wEkv/r5t6SblD/U/VfVE/FeFDjkZcAufjN1H9yf6Lu8xFGvaEE0hHkPh9Rqv+hHnGIFqwXDyQi/cBz8ai2OUg0xI/joynAIwW3hMcjk9ds/WgpTJCof4Wa3yf/8T9to/ZzfG7FGDpe45c9uf7uNf5JIHwq/uHRFIDkcgGnf9+ta8ITEL6Aw0JwmEwXMPoTekuHd/kZyUO33sfvkw8Vd1i+xykkTCEg3uE2FtzvKC/xDJMj3g8Lh9vzOUa4I/HHeB7hGsB2IT+fX80V/QLEH/m59LsHcDzP5pnNs1j4eJi/xwOUh35/mOfZfO4w8bjSoWIPGGfDLOZ1IHw+zJKtPK5OJrXneMJSEa/ze/x5K/ndyF+5/ug7HMoHsc/4fSb9d4YndPCANNPyZDeGeZppePq8d7JjeLx+hNs/won+MZPMtB/Mr5R2LWeuX+lv8VjqM9X6Ntz/+POf54evvJs/AHmjI8D1r2twkwiuFh3uXypB5lOpH4ebhdTfPr5aSP39i3z3/8gfpg/qV/ZevcUD4Pr22PYE2PbOkrIbS4C3841GCLf/X9bT+LQ0PoHinsbP4Z+UDxWPNf4OR2WuvMy/0Qq1U/wpmzj/I56+J4VkF/qzWvMvmJqXl05CmGrn7vKh4nGjeDP/rWKpp55ePaG6f6juB1pgXXFfxjsqVf9TFw9Q/zcDNdL6CRV3xf9NPfnKywcJey/zP3A96+7Hzbz3m1qs9Wi+0Tp299mUq3/bD6Q+d+mLQes/U/Mmat7tpj80f1btBbXP9sVgOMXHC0bAYrpiNBAiCwUaSJh/R9ZW72yF2JjgDPlfy/JDUdoQxc8vDIyv1k1Vr605R5wg/1F4Opx4fv8sKxsqJvtYXnG3qZtV3djAXJgA5VtlWl4jH5gzE1yQ/YvqhuUvGEdlwbzDY5S/If0q73g6nPjRtyXLG0/lQfjnIPgU6uYd6k/6z1j+Zfsl8/Fzj/lBt83yEArG7oss8hDGATxD3K19215bKUiD4b3N849l5vrFvf+2/fHE91+MDe1RfjBCgP7FwPjyK80PnH8xNT/fvzgfsH9jfCzQDPgK/gKkCRj7NCFo/mHzMSbqbgkeNyi+PahBfSsYV2sluzc5QAniWxZeEUYVIdVudwlj+j7A+zYm/vak/MzYoEmtVW81vVluMfLRAx7lm9ldHSseKJ8ofqPyhvAE7/9r5CH6bM5YX3L5B8rDuHZ4l59+Q3l6P+zhZyx/upUvRT/2EuvH96PoV7zLjxuy/wvNP8Scv2viA8bo36fqZvWG/Dfn/D5plR9I/wb7zYr07+Vb+Pyk+b9Xfr0i/x/xA+UnHP9K43+u8f95J/4vKP47+Sm+kz+YhMzDq9ZvxMMBlhheIFhSdP88p/qh9z0VjU5pcNf85n3wD46oNXg=:E1D0"+
+//                                "^XZ";
+
+                        String data = "^XA^CW0,E:HANS.TTF ^CI28\n" +
+                                "^LS0\n" +
+                                "^FT513,51^A0R,22^FH\\^CI28^FD物料号:1704000690^FS^CI27\n" +
+                                "^FT324,51^A0R,22^FH\\^CI28^FD描述:薄钢板 SUS436L δ1.0×1219(+2/0)×1715 切边^FS^CI27\n" +
+                                "^FT462,51^A0R,22^FH\\^CI28^FD旧物料号:^FS^CI27\n" +
+                                "^FT109,51^A0R,22^FH\\^CI28^FD供应商:^FS^CI27\n" +
+                                "^FT415,51^A0R,22^FH\\^CI28^FD批次号:1111^FS^CI27\n" +
+                                "^FT268,51^A0R,22^FH\\^CI28^FD订单号:00000000^FS^CI27\n" +
+                                "^FT216,51^A0R,22^FH\\^CI28^FD订单数量:^FS^CI27\n" +
+                                "^FT163,51^A0R,22^FH\\^CI28^FD拣配数量:1^FS^CI27\n" +
+                                "^FT52,48^A0R,22^FH\\^CI28^FD发料任务号:T1234567^FS^CI27\n" +
+                                "^FT365,638^BQN,2,8\n" +
+                                "^FH\\^FDLA,123456789012123456789011111^FS\n" +
+                                "^FT370,48^A0R,22^FH\\^CI28^FD仓位号:M-01-01^FS^CI27\n" +
+                                "^FT263,446^A0R,22^FH\\^CI28^FD订单批次:T2013001^FS^CI27\n" +
+                                "^FT213,446^A0R,22^FH\\^CI28^FD成品代码:00000000^FS^CI27\n" +
+                                "^FT161,446^A0R,22^FH\\^CI28^FD当车数量:1^FS^CI27\n" +
+                                "^PQ1,0,1,Y\n" +
+                                "^XZ";
                         byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
                        List<Byte> byteList = new ArrayList<Byte>(Arrays.asList(PrintUtil.toObjects(bytes)));
                         List<List<Byte>> lists = PrintUtil.spliceArrays(byteList, 60);
