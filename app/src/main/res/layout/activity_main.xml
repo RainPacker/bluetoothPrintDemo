@@ -10,6 +10,8 @@
         android:layout_width="match_parent"
         android:indeterminateTintMode="src_atop"
          android:indeterminateTint="@color/design_default_color_primary"
+        android:progressDrawable="@drawable/progressbar"
+        android:visibility="visible"
         android:layout_height="3dp" />
     <com.mingle.widget.LoadingView
         android:id="@+id/loadView"
