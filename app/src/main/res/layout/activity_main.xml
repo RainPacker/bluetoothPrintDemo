@@ -11,6 +11,10 @@
         android:indeterminateTintMode="src_atop"
          android:indeterminateTint="@color/design_default_color_primary"
         android:layout_height="3dp" />
+    <com.mingle.widget.LoadingView
+        android:id="@+id/loadView"
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent"/>
 
     <WebView
         android:id="@+id/web_view"

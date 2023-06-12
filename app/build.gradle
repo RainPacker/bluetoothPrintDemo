@@ -45,4 +45,5 @@ dependencies {
     implementation 'com.github.promeg:tinypinyin:1.0.0'
     implementation 'com.inuker.bluetooth:library:1.4.0'
     implementation 'com.symbol:emdk:+'
+    implementation 'com.github.zzz40500:android-shapeLoadingView:1.0.3.2'
 }

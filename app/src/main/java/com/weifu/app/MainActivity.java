@@ -38,6 +38,8 @@ import androidx.appcompat.app.AppCompatActivity;
 
 
 import com.inuker.bluetooth.library.BluetoothClient;
+import com.mingle.widget.LoadingView;
+import com.mingle.widget.ShapeLoadingDialog;
 import com.symbol.emdk.EMDKManager;
 import com.symbol.emdk.EMDKResults;
 import com.symbol.emdk.barcode.BarcodeManager;
@@ -80,6 +82,9 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
     private BluetoothStateReceiver mBluetoothStateReceiver;
     private ProgressBar progressBar;
     BluetoothClient mClient;
+    private ShapeLoadingDialog shapeLoadingDialog;
+    private LoadingView loadingView;
+
     public final IMyBinder getPrinterBinder() {
         return printerBinder;
     }
@@ -213,8 +218,13 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
 
         // 这里填你需要打包的 H5 页面链接
         webView.loadUrl(LOADRL);
+//        shapeLoadingDialog = new ShapeLoadingDialog(this);
+//        shapeLoadingDialog.setLoadingText("加载中...");
         progressBar = findViewById(R.id.progress_bar);
         progressBar.setVisibility(View.VISIBLE);
+        loadingView = findViewById(R.id.loadView);
+
+
 
         //显示一些小图片（头像）
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -227,6 +237,7 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
         webView.getSettings().setAllowFileAccess(true);
         webView.getSettings().getAllowUniversalAccessFromFileURLs();
         webView.getSettings().getAllowFileAccessFromFileURLs();
+        webView.setOnKeyListener((view, keyCode,  event)-> this.onKeyDown(keyCode,event));
     }
 
     //设置回退页面
@@ -514,7 +525,10 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
             Log.d(TAG, "newProgress:" + newProgress);
             // 进行进度条更新
             if (newProgress == PROCESS_BAR_MAX) {
+              //  shapeLoadingDialog.dismiss();
+
                 progressBar.setVisibility(View.GONE);
+                loadingView.setVisibility(View.GONE);
             }
             progressBar.setProgress(newProgress);
             // 如果想展示加载动画，则增加一个drawable布局后，在onCreate时展示，在progress=100时View.GONE即可
@@ -547,5 +561,7 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
             }, 3000);
         }
     };
+
+
 
 }
