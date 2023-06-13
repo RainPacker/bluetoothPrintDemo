@@ -25,6 +25,7 @@ import com.google.gson.Gson;
 import com.inuker.bluetooth.library.BluetoothClient;
 import com.inuker.bluetooth.library.connect.options.BleConnectOptions;
 import com.inuker.bluetooth.library.connect.response.BleConnectResponse;
+import com.inuker.bluetooth.library.connect.response.BleReadResponse;
 import com.inuker.bluetooth.library.connect.response.BleWriteResponse;
 import com.inuker.bluetooth.library.model.BleGattProfile;
 import com.inuker.bluetooth.library.receiver.listener.BluetoothBondListener;
@@ -332,6 +333,7 @@ public class JsBridge implements ProcessData {
                         // connectDevice(deviceList.get(0),2);
                         UUID uuid = UUID.fromString("38eb4a80-c570-11e3-9507-0002a5d5c51b");
                         UUID uui2d = UUID.fromString("38eb4a82-c570-11e3-9507-0002a5d5c51b");
+                        UUID read = UUID.fromString("38eb4a81-c570-11e3-9507-0002a5d5c51b");
 //                        String data ="\n" +
 //                                "^XA\n" +
 //                                "^CW0,E:HANS.TTF ^CI28\n" +
@@ -351,23 +353,51 @@ public class JsBridge implements ProcessData {
 //                     //           "^FO472,275^GFA,1665,3376,8,:Z64:eJydVs1q21gUPpIjMA7YLlSr2ZjMJjhQb0sFsQKTvQK+L9FF/QbOnWRjOtC8gmg3Qh1olyKCtExfxEsTBmsrhkGe83ftxNTTmdwEbr58Ovf8n3sBaL3NeDs3CYA/LMuyAM/QSkYVr6WRlUQlr8LhWcOr3sdPvyufDwiQysvGsmpjYt6j8lYx04D6l7QH+o8WSqf6QUI7Kac93PcBnrCyegLp8Nk9kZjQ3l0360cSJ/qBpxg+iQ14BMUnfxifF0/yv8wEkv/r5t6SblD/U/VfVE/FeFDjkZcAufjN1H9yf6Lu8xFGvaEE0hHkPh9Rqv+hHnGIFqwXDyQi/cBz8ai2OUg0xI/joynAIwW3hMcjk9ds/WgpTJCof4Wa3yf/8T9to/ZzfG7FGDpe45c9uf7uNf5JIHwq/uHRFIDkcgGnf9+ta8ITEL6Aw0JwmEwXMPoTekuHd/kZyUO33sfvkw8Vd1i+xykkTCEg3uE2FtzvKC/xDJMj3g8Lh9vzOUa4I/HHeB7hGsB2IT+fX80V/QLEH/m59LsHcDzP5pnNs1j4eJi/xwOUh35/mOfZfO4w8bjSoWIPGGfDLOZ1IHw+zJKtPK5OJrXneMJSEa/ze/x5K/ndyF+5/ug7HMoHsc/4fSb9d4YndPCANNPyZDeGeZppePq8d7JjeLx+hNs/won+MZPMtB/Mr5R2LWeuX+lv8VjqM9X6Ntz/+POf54evvJs/AHmjI8D1r2twkwiuFh3uXypB5lOpH4ebhdTfPr5aSP39i3z3/8gfpg/qV/ZevcUD4Pr22PYE2PbOkrIbS4C3841GCLf/X9bT+LQ0PoHinsbP4Z+UDxWPNf4OR2WuvMy/0Qq1U/wpmzj/I56+J4VkF/qzWvMvmJqXl05CmGrn7vKh4nGjeDP/rWKpp55ePaG6f6juB1pgXXFfxjsqVf9TFw9Q/zcDNdL6CRV3xf9NPfnKywcJey/zP3A96+7Hzbz3m1qs9Wi+0Tp299mUq3/bD6Q+d+mLQes/U/Mmat7tpj80f1btBbXP9sVgOMXHC0bAYrpiNBAiCwUaSJh/R9ZW72yF2JjgDPlfy/JDUdoQxc8vDIyv1k1Vr605R5wg/1F4Opx4fv8sKxsqJvtYXnG3qZtV3djAXJgA5VtlWl4jH5gzE1yQ/YvqhuUvGEdlwbzDY5S/If0q73g6nPjRtyXLG0/lQfjnIPgU6uYd6k/6z1j+Zfsl8/Fzj/lBt83yEArG7oss8hDGATxD3K19215bKUiD4b3N849l5vrFvf+2/fHE91+MDe1RfjBCgP7FwPjyK80PnH8xNT/fvzgfsH9jfCzQDPgK/gKkCRj7NCFo/mHzMSbqbgkeNyi+PahBfSsYV2sluzc5QAniWxZeEUYVIdVudwlj+j7A+zYm/vak/MzYoEmtVW81vVluMfLRAx7lm9ldHSseKJ8ofqPyhvAE7/9r5CH6bM5YX3L5B8rDuHZ4l59+Q3l6P+zhZyx/upUvRT/2EuvH96PoV7zLjxuy/wvNP8Scv2viA8bo36fqZvWG/Dfn/D5plR9I/wb7zYr07+Vb+Pyk+b9Xfr0i/x/xA+UnHP9K43+u8f95J/4vKP47+Sm+kz+YhMzDq9ZvxMMBlhheIFhSdP88p/qh9z0VjU5pcNf85n3wD46oNXg=:E1D0"+
 //                                "^XZ";
 
-                        String data = "^XA^CW0,E:HANS.TTF ^CI28\n" +
-                                "^LS0\n" +
-                                "^FT513,51^A0R,22^FH\\^CI28^FD物料号:1704000690^FS^CI27\n" +
-                                "^FT324,51^A0R,22^FH\\^CI28^FD描述:薄钢板 SUS436L δ1.0×1219(+2/0)×1715 切边^FS^CI27\n" +
-                                "^FT462,51^A0R,22^FH\\^CI28^FD旧物料号:^FS^CI27\n" +
-                                "^FT109,51^A0R,22^FH\\^CI28^FD供应商:^FS^CI27\n" +
-                                "^FT415,51^A0R,22^FH\\^CI28^FD批次号:1111^FS^CI27\n" +
-                                "^FT268,51^A0R,22^FH\\^CI28^FD订单号:00000000^FS^CI27\n" +
-                                "^FT216,51^A0R,22^FH\\^CI28^FD订单数量:^FS^CI27\n" +
-                                "^FT163,51^A0R,22^FH\\^CI28^FD拣配数量:1^FS^CI27\n" +
-                                "^FT52,48^A0R,22^FH\\^CI28^FD发料任务号:T1234567^FS^CI27\n" +
-                                "^FT365,638^BQN,2,8\n" +
-                                "^FH\\^FDLA,123456789012123456789011111^FS\n" +
-                                "^FT370,48^A0R,22^FH\\^CI28^FD仓位号:M-01-01^FS^CI27\n" +
-                                "^FT263,446^A0R,22^FH\\^CI28^FD订单批次:T2013001^FS^CI27\n" +
-                                "^FT213,446^A0R,22^FH\\^CI28^FD成品代码:00000000^FS^CI27\n" +
-                                "^FT161,446^A0R,22^FH\\^CI28^FD当车数量:1^FS^CI27\n" +
+
+                        String data =  "" +
+                                "^XA\n" +
+                                "^CW0,E:HANS.TTF ^CI\n" +
+                                "^FO25,3^GB523,762,5^FS\n" +
+                                "^FO402,3^GB0,360,3^FS\n" +
+                                "^FO162,3^GB0,756,2^FS\n" +
+                                "^FO209,4^GB0,758,2^FS\n" +
+                                "^FO257,4^GB0,761,2^FS\n" +
+                                "^FO301,5^GB0,760,2^FS\n" +
+                                "^FO348,4^GB0,761,2^FS\n" +
+                                "^FO118,4^GB0,758,2^FS\n" +
+                                "^FO80,3^GB0,759,2^FS\n" +
+                                "^FO80,141^GB323,0,3^FS\n" +
+                                "^FO211,361^GB90,0,3^FS\n" +
+                                "^FO211,502^GB92,0,3^FS\n" +
+                                "^FT377,725^BQN,2,5\n" +
+                                "^FH^FDLA,B6222%M1019160712311%Q150%C20230606001_100%C20230606002_50^FS\n" +
+                                "^FO407,239^GB139,0,3^FS\n" +
+                                "^FO348,361^GB198,0,3^FS\n" +
+                                "^FT465,257^A0R,25^FH^CI28^FD分拣单^FS^CI28\n" +
+                                "^FT315,18^A0R,22^FH^CI28^FD物料描述^FS^CI28\n" +
+                                "^FT272,18^A0R,22^FH^CI28^FD仓位^FS^CI28\n" +
+                                "^FT232,18^A0R,22^FH^CI28^FD批次号^FS^CI28\n" +
+                                "^FT184,8^A0R,22^FH^CI28^FD成本中心描述^FS^CI28\n" +
+                                "^FT137,18^A0R,22^FH^CI28^FD供应商^FS^CI28\n" +
+                                "^FT88,18^A0R,22^FH^CI28^FD备注^FS^CI28\n" +
+                                "^FT368,18^A0R,22^FH^CI28^FD物料代码^FS^CI28\n" +
+                                "^FT365,152^A0R,27^FH^CI28^FD10080300104^FS^CI28\n" +
+                                "^FT315,152^A0R,22^FH^CI28^FD2^FS^CI28\n" +
+                                "^FT272,152^A0R,27^FH^CI28^FDA0-01-01^FS^CI28\n" +
+                                "^FT224,152^A0R,22^FH^CI28^FD4^FS^CI28\n" +
+                                "^FT177,152^A0R,22^FH^CI28^FD5^FS^CI28\n" +
+                                "^FT129,152^A0R,22^FH^CI28^FD6^FS^CI28\n" +
+                                "^FT90,152^A0R,22^FH^CI28^FD7^FS^CI28\n" +
+                                "^FT269,371^A0R,22^FH^CI28^FD数量^FS^CI28\n" +
+                                "^FT224,371^A0R,22^FH^CI28^FD生产订单号^FS^CI28\n" +
+                                "^FT224,518^A0R,22^FH^CI28^FD10^FS^CI28\n" +
+                                "^FT517,407^A0R,22^FH^CI28^FD分拣单号^FS^CI28\n" +
+                                "^FT479,416^A0R,22^FH^CI28^FDLXJN2012^FS^CI28\n" +
+                                "^FT506,51^A0R,22^FH^CI28^FD配送计划号^FS^CI28\n" +
+                                "^FT434,51^A0R,22^FH^CI28^FD12345678^FS^CI28\n" +
+                                "^FT272,518^A0R,22^FH^CI28^FD9^FS^CI28\n" +
+                                "^FT40,490^A0R,18^FH^CI28^FD打印时间：2023/06/13 12:13:13^FS^CI28\n" +
+                                "^FT40,358^A0R,18^FH^CI28^FD操作人：张杨杨^FS^CI28\n" +
                                 "^PQ1,0,1,Y\n" +
                                 "^XZ";
                         byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
@@ -398,6 +428,8 @@ public class JsBridge implements ProcessData {
 //                                }
 //                            }
 //                        });
+                     //   mClient.disconnect(addrs);
+
 
                     }
                 }else {
@@ -435,6 +467,9 @@ public class JsBridge implements ProcessData {
                     if(type.equals("2")){
                         // connectDevice(deviceList.get(0),2);
                         UUID uuid = UUID.fromString("38eb4a80-c570-11e3-9507-0002a5d5c51b");
+                        // read
+                        UUID readUUID = UUID.fromString("38eb4a81-c570-11e3-9507-0002a5d5c51b");
+
                         UUID uui2d = UUID.fromString("38eb4a82-c570-11e3-9507-0002a5d5c51b");
                         String data = printData;
 
@@ -464,6 +499,13 @@ public class JsBridge implements ProcessData {
 //                                if (code == REQUEST_SUCCESS) {
 //
 //                                }
+//                            }
+//                        });
+//                        mClient.read(addrs, uuid, readUUID, new BleReadResponse() {
+//                            @Override
+//                            public void onResponse(int code, byte[] data) {
+//                                String s = new String(data);
+//                                Log.d(TAG, "read onResponse: "+s);
 //                            }
 //                        });
 
