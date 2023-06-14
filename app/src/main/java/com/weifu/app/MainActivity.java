@@ -120,7 +120,7 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
                // return;
             }
         }catch (Exception e){
-
+            Log.e(TAG, "onCreate: "+e.getMessage(),e);
         }
 
         //隐藏ActionBar

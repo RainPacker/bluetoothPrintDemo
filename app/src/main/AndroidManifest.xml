@@ -24,6 +24,7 @@
         android:theme="@style/Theme.Hyoa"
         android:usesCleartextTraffic="true"
         tools:targetApi="m">
+        <uses-library android:name="com.symbol.emdk" android:required="false"/>
         <activity android:name=".SplashActivity"  >
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
