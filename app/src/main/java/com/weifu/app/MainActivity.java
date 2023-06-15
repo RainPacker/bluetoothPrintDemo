@@ -63,7 +63,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 
-public class MainActivity extends AppCompatActivity implements Scanner.DataListener, EMDKManager.EMDKListener {
+public class MainActivity extends AppCompatActivity /**implements Scanner.DataListener, EMDKManager.EMDKListener**/ {
      private static final int REQUEST_OPEN = 0X01;
 
     private EMDKManager emdkManager = null;
@@ -81,11 +81,20 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
     ValueCallback<Uri> mFilePathCallback;
     ValueCallback<Uri[]> mFilePathCallbackArray;
     private IMyBinder printerBinder;
-    private BluetoothStateReceiver mBluetoothStateReceiver;
+//    private BluetoothStateReceiver mBluetoothStateReceiver;
     private ProgressBar progressBar;
     BluetoothClient mClient;
     private ShapeLoadingDialog shapeLoadingDialog;
     private LoadingView loadingView;
+    private JsBridge jsBridge;
+    /**
+     * iData
+     */
+    private final   String ACTION_IDATA_SCANRESULT="android.intent.action.SCANRESULT";
+    /**
+     * 斑马
+     */
+    private final   String ACTION_ZEBRA_SCANRESULT="android.intent.action.DEFAULT";
 
     public final IMyBinder getPrinterBinder() {
         return printerBinder;
@@ -109,19 +118,19 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
         setFullscreen(true, true);
         setAndroidNativeLightStatusBar(this, true);
         super.onCreate(savedInstanceState);
-        initReceiver();
+       // initReceiver();
      //   getPermission();
         requestPermissions();
         createClient();
-        try {
-            EMDKResults results = EMDKManager.getEMDKManager(MainActivity.this, this);
-            if (results.statusCode != EMDKResults.STATUS_CODE.SUCCESS) {
-                Log.e(TAG,"EMDKManager object request failed!");
-               // return;
-            }
-        }catch (Exception e){
-            Log.e(TAG, "onCreate: "+e.getMessage(),e);
-        }
+//        try {
+//            EMDKResults results = EMDKManager.getEMDKManager(MainActivity.this, this);
+//            if (results.statusCode != EMDKResults.STATUS_CODE.SUCCESS) {
+//                Log.e(TAG,"EMDKManager object request failed!");
+//               // return;
+//            }
+//        }catch (Exception e){
+//            Log.e(TAG, "onCreate: "+e.getMessage(),e);
+//        }
 
         //隐藏ActionBar
         Objects.requireNonNull(getSupportActionBar()).hide();
@@ -216,6 +225,15 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
                 return true;
             }
         });
+        jsBridge = new JsBridge(this);
+        // 注册广播
+        IntentFilter actionFilters = new IntentFilter();
+        actionFilters.addAction(ACTION_IDATA_SCANRESULT);
+        actionFilters.addAction(ACTION_ZEBRA_SCANRESULT);
+        actionFilters.addAction(Intent.ACTION_SCREEN_ON);
+        actionFilters.addAction( BluetoothAdapter.ACTION_STATE_CHANGED);
+        registerReceiver(jsBridge,actionFilters);
+
         webView.addJavascriptInterface(new JsBridge(this), "JsBridge");
 
         webView.setWebViewClient(new MyClient());
@@ -264,6 +282,7 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
         super.onDestroy();
         webView.destroy();
         webView = null;
+        unregisterReceiver(jsBridge);
     }
 
 
@@ -339,14 +358,14 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
     }
 
 
-    private void initReceiver() {
-        mBluetoothStateReceiver = new BluetoothStateReceiver();
-        IntentFilter filter = new IntentFilter();
-        filter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
-        registerReceiver(mBluetoothStateReceiver, filter);
-    }
+//    private void initReceiver() {
+//        mBluetoothStateReceiver = new BluetoothStateReceiver();
+//        IntentFilter filter = new IntentFilter();
+//        filter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
+//        registerReceiver(mBluetoothStateReceiver, filter);
+//    }
 
-    @Override
+/*    @Override
     public void onOpened(EMDKManager emdkManager) {
         this.emdkManager = emdkManager;
          Toast.makeText(MainActivity.this,"opended",Toast.LENGTH_SHORT);
@@ -356,23 +375,23 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
         enumerateScannerDevices();
         // Set default scanner
 //        spinnerScannerDevices.setSelection(defaultIndex);
-    }
+    }*/
 
     @Override
     protected void onResume() {
         super.onResume();
         // The application is in foreground
-        if (emdkManager != null) {
-            // Acquire the barcode manager resources
-            initBarcodeManager();
-            // Enumerate scanner devices
-            enumerateScannerDevices();
-            // Initialize scanner
-            initScanner();
-        }
+//        if (emdkManager != null) {
+//            // Acquire the barcode manager resources
+//            initBarcodeManager();
+//            // Enumerate scanner devices
+//            enumerateScannerDevices();
+//            // Initialize scanner
+//            initScanner();
+//        }
     }
 
-    private void initScanner() {
+/*    private void initScanner() {
         if (scanner == null) {
             if ((deviceList != null) && (deviceList.size() != 0)) {
                 if (barcodeManager != null)
@@ -395,8 +414,8 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
                 Log.d(TAG,"Failed to initialize the scanner device.");
             }
         }
-    }
-    private void deInitScanner() {
+    }*/
+/*    private void deInitScanner() {
         if (scanner != null) {
             try{
                 scanner.disable();
@@ -418,7 +437,7 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
             }
             scanner = null;
         }
-    }
+    }*/
 
     private void enumerateScannerDevices() {
         if (barcodeManager != null) {
@@ -441,15 +460,15 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
         }
     }
 
-    @Override
+/*    @Override
     public void onClosed() {
         if (emdkManager != null) {
             emdkManager.release();
             emdkManager = null;
         }
-    }
+    }*/
 
-    @Override
+/*    @Override
     public void onData(ScanDataCollection scanDataCollection) {
         if ((scanDataCollection != null) && (scanDataCollection.getResult() == ScannerResults.SUCCESS)) {
             ArrayList <ScanDataCollection.ScanData> scanData = scanDataCollection.getScanData();
@@ -458,33 +477,35 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
                 Toast.makeText (MainActivity.this,data.getData(),Toast.LENGTH_LONG);
             }
         }
-    }
+    }*/
+
+
 
 //    @Override
 //    public void onStatus(StatusData statusData) {
 //
 //    }
 
-    /**
-     * 监听蓝牙状态变化的系统广播
-     */
-     class BluetoothStateReceiver extends BroadcastReceiver {
-
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1);
-            switch (state) {
-                case BluetoothAdapter.STATE_TURNING_ON:
-                    Toast.makeText (MainActivity.this,"蓝牙已开启",Toast.LENGTH_LONG);
-                    break;
-
-                case BluetoothAdapter.STATE_TURNING_OFF:
-                    Toast.makeText (MainActivity.this,"蓝牙已关闭",Toast.LENGTH_LONG);
-                    break;
-            }
-            onBluetoothStateChanged(intent);
-        }
-    }
+//    /**
+//     * 监听蓝牙状态变化的系统广播
+//     */
+//     class BluetoothStateReceiver extends BroadcastReceiver {
+//
+//        @Override
+//        public void onReceive(Context context, Intent intent) {
+//            int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1);
+//            switch (state) {
+//                case BluetoothAdapter.STATE_TURNING_ON:
+//                    Toast.makeText (MainActivity.this,"蓝牙已开启",Toast.LENGTH_LONG);
+//                    break;
+//
+//                case BluetoothAdapter.STATE_TURNING_OFF:
+//                    Toast.makeText (MainActivity.this,"蓝牙已关闭",Toast.LENGTH_LONG);
+//                    break;
+//            }
+//            onBluetoothStateChanged(intent);
+//        }
+//    }
 
     private void onBluetoothStateChanged(Intent intent) {
     }
@@ -619,6 +640,9 @@ public class MainActivity extends AppCompatActivity implements Scanner.DataListe
             decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         }
     }
+
+
+
 
 
 }

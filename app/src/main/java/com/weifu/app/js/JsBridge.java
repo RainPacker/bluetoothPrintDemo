@@ -53,7 +53,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-public class JsBridge implements ProcessData {
+public class JsBridge extends BroadcastReceiver implements ProcessData {
     String TAG = getClass().getSimpleName();
     private MainActivity activity;
     private ProgressDialog progressDialog;
@@ -62,6 +62,14 @@ public class JsBridge implements ProcessData {
     private AsyncTask mConnectTask;
 
     private BluetoothSocket mSocket;
+    /**
+     * iData
+     */
+    private final   String ACTION_IDATA_SCANRESULT="android.intent.action.SCANRESULT";
+    /**
+     * 斑马
+     */
+    private final   String ACTION_ZEBRA_SCANRESULT="android.intent.action.DEFAULT";
 
     final static int TASK_TYPE_CONNECT = 1;
     final static int TASK_TYPE_PRINT = 2;
@@ -622,5 +630,41 @@ public class JsBridge implements ProcessData {
          connectBle4New(addr,"2",zpl);
     }
 
+    /**
+     * 获取扫码后的广播事件
+     * @param context
+     * @param intent
+     */
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        Log.d(TAG,"action:"+intent.getAction());
 
+        if((BluetoothAdapter.ACTION_STATE_CHANGED.equals(intent.getAction()))){
+            int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1);
+            switch (state) {
+                case BluetoothAdapter.STATE_TURNING_ON:
+                    showToast("蓝牙已开启");
+                    break;
+
+                case BluetoothAdapter.STATE_TURNING_OFF:
+                    showToast("蓝牙已关闭");
+                    break;
+           }
+        }
+        // 扫码成功事件
+        if (ACTION_IDATA_SCANRESULT.equals(intent.getAction())) {
+            // IData 是从value
+            String s = intent.getStringExtra("value");
+            Log.d("BarcodeTAG", "recvBarcode--" + s);
+            showToast(s);
+        }
+        if (ACTION_ZEBRA_SCANRESULT.equals(intent.getAction())) {
+            // 斑马
+            String decodedSource = intent.getStringExtra("com.symbol.datawedge.source");
+            String decodedData = intent.getStringExtra("com.symbol.datawedge.data_string");
+            String decodedLabelType = intent.getStringExtra("com.symbol.datawedge.label_type");
+            showToast(decodedData);
+            Log.d("BarcodeTAG", "recvBarcode--" + decodedData);
+        }
+    }
 }
