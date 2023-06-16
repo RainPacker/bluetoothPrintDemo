@@ -74,8 +74,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private static final int PROCESS_BAR_MAX = 100;
 
     String TAG = getClass().getSimpleName();
-  //  private static final String LOADRL ="http://10.1.4.147:9001/" ;
-    private static final String LOADRL ="http://10.94.31.149:31223/" ;
+    private static final String LOADRL ="http://10.1.4.139:9001/" ;
+//    private static final String LOADRL ="http://10.94.31.149:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10001;
     ValueCallback<Uri> mFilePathCallback;
@@ -87,14 +87,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private ShapeLoadingDialog shapeLoadingDialog;
     private LoadingView loadingView;
     private JsBridge jsBridge;
-    /**
-     * iData
-     */
-    private final   String ACTION_IDATA_SCANRESULT="android.intent.action.SCANRESULT";
-    /**
-     * 斑马
-     */
-    private final   String ACTION_ZEBRA_SCANRESULT="android.intent.action.DEFAULT";
+
 
     public final IMyBinder getPrinterBinder() {
         return printerBinder;
@@ -140,7 +133,6 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         webView = findViewById(R.id.web_view);
         webView.getSettings().setJavaScriptEnabled(true);
         webView.setWebViewClient(new WebViewClient());
-        // code from https://blog.csdn.net/qq_21138819/article/details/56676007 by 欢子-3824
         webView.setWebChromeClient(new WebChromeClient() {
             // Andorid 4.1----4.4
             public void openFileChooser(ValueCallback<Uri> uploadFile, String acceptType, String capture) {
@@ -174,7 +166,6 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         });
 
         // wevView监听 H5 页面的下载事件
-        // code from https://github.com/madhan98/Android-webview-upload-download/blob/master/app/src/main/java/com/my/newproject/MainActivity.java by Madhan
         webView.setDownloadListener(new DownloadListener() {
 
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
@@ -228,8 +219,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         jsBridge = new JsBridge(this);
         // 注册广播
         IntentFilter actionFilters = new IntentFilter();
-        actionFilters.addAction(ACTION_IDATA_SCANRESULT);
-        actionFilters.addAction(ACTION_ZEBRA_SCANRESULT);
+        actionFilters.addAction(JsBridge.ACTION_IDATA_SCANRESULT);
+        actionFilters.addAction(JsBridge.ACTION_ZEBRA_SCANRESULT);
         actionFilters.addAction(Intent.ACTION_SCREEN_ON);
         actionFilters.addAction( BluetoothAdapter.ACTION_STATE_CHANGED);
         registerReceiver(jsBridge,actionFilters);

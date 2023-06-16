@@ -14,6 +14,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.AsyncTask;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Looper;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
@@ -33,6 +34,7 @@ import com.symbol.emdk.barcode.Scanner;
 import com.symbol.emdk.barcode.ScannerException;
 import com.weifu.app.MainActivity;
 import com.weifu.app.R;
+import com.weifu.app.scan.ScannerInterface;
 import com.weifu.utils.BluetoothUtil;
 import com.weifu.utils.EscPosUtils;
 import com.weifu.utils.PrintUtil;
@@ -65,11 +67,11 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
     /**
      * iData
      */
-    private final   String ACTION_IDATA_SCANRESULT="android.intent.action.SCANRESULT";
+    public static final   String ACTION_IDATA_SCANRESULT="android.intent.action.SCANRESULT";
     /**
      * 斑马
      */
-    private final   String ACTION_ZEBRA_SCANRESULT="android.intent.action.DEFAULT";
+    public static final   String ACTION_ZEBRA_SCANRESULT="default";
 
     final static int TASK_TYPE_CONNECT = 1;
     final static int TASK_TYPE_PRINT = 2;
@@ -77,6 +79,17 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
      * 已经配对的蓝牙设备
      */
     private List<BluetoothDevice> devices;
+    /**
+     * 扫码标识
+     */
+    private String flag;
+
+    // DataWedge Actions
+    private static final String ACTION_DATAWEDGE = "com.symbol.datawedge.api.ACTION";
+    private static final String EXTRA_SOFT_SCAN_TRIGGER = "com.symbol.datawedge.api.SOFT_SCAN_TRIGGER";
+    private static final String ACTION_RESULT_NOTIFICATION = "com.symbol.datawedge.api.NOTIFICATION_ACTION";
+    private static final String ACTION_RESULT = "com.symbol.datawedge.api.RESULT_ACTION";
+    private static final String EXTRA_SET_CONFIG = "com.symbol.datawedge.api.SET_CONFIG";
 
 
     public JsBridge(MainActivity mainActivity) {
@@ -590,34 +603,35 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
         }
     }
 
-    /**
-     * 条码枪回传
-     * @param res
-     * @throws InterruptedException
-     */
-    @JavascriptInterface
-    public  void onScaned(String res) throws InterruptedException {
-        Log.d(TAG, "onScaned: "+ res);
+
+    public  void onScaned(String result) throws InterruptedException {
+        Log.d(TAG, "onScaned:"+ result);
         String callBack = "onScaned";
-        Thread.sleep(3000);
         activity.runOnUiThread(()->{
-            activity.getWebView().loadUrl("javascript:" + callBack + "(" + res + ");");
+            activity.getWebView().loadUrl("javascript:" + callBack + "(\"" + flag +"\",\""+result+ "\");");
         });
 
     }
 
+    /**
+     *
+     * @throws InterruptedException
+     */
     @JavascriptInterface
-    public void mScan(){
-        Scanner scanner = activity.getScanner();
-        if (scanner != null) {
-            if (scanner.isReadPending()) {
-                try {
-                    scanner.cancelRead();
-                } catch (ScannerException e) {
-                    Log.d(TAG, "cancelRead: "+e.getMessage());
-                }
-            }
-        }
+    public void softScan() throws InterruptedException {
+        Log.d(TAG, "mScan: start...");
+        // 斑马
+        softTriggerScan();
+
+        String callBack = "onScaned";
+        String result = "收到来自安卓的消息";
+//        Thread.sleep(3000);
+        // iData
+        ScannerInterface scannerInterface = new ScannerInterface(activity);
+        scannerInterface.scan_start();
+//       activity.runOnUiThread(()->{
+//           activity.getWebView().loadUrl("javascript:" + callBack + "(\"" + flag +"\",\""+result+ "\");");
+//       });
     }
 
     /**
@@ -664,7 +678,35 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
             String decodedData = intent.getStringExtra("com.symbol.datawedge.data_string");
             String decodedLabelType = intent.getStringExtra("com.symbol.datawedge.label_type");
             showToast(decodedData);
+            try {
+                onScaned(decodedData);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            // 回调通知 js
+
             Log.d("BarcodeTAG", "recvBarcode--" + decodedData);
         }
+    }
+
+
+    private  void softTriggerScan(){
+        sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_SOFT_SCAN_TRIGGER, "TOGGLE_SCANNING");
+    }
+
+
+
+
+    private void sendDataWedgeIntentWithExtra(String action, String extraKey, String extraValue)
+    {
+        Intent dwIntent = new Intent();
+        dwIntent.setAction(action);
+        dwIntent.putExtra(extraKey, extraValue);
+
+        this.sendBroadcast(dwIntent);
+    }
+
+    public void   sendBroadcast(Intent intent){
+        this.activity.sendBroadcast(intent);
     }
 }
