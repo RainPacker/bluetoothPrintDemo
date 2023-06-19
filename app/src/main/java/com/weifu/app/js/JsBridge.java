@@ -623,7 +623,7 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
     public void softScan() throws InterruptedException {
         Log.d(TAG, "mScan: start...");
         // 斑马
-       this.CreateProfile();
+//       this.createProfile();
         softTriggerScan();
 
         String callBack = "onScaned";
@@ -722,9 +722,10 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
     }
 
 
-
-    // Create profile from UI onClick() event
-    public void CreateProfile (){
+    /**
+     * 创建profile 斑马专用配置文件
+     */
+    public void createProfile (){
         String profileName = EXTRA_PROFILENAME;
 
         // Send DataWedge intent with extra to create profile

@@ -217,6 +217,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
             }
         });
         jsBridge = new JsBridge(this);
+        // 注册配置文件 斑马专用
+        jsBridge.createProfile();
         // 注册广播
         IntentFilter actionFilters = new IntentFilter();
         actionFilters.addAction(JsBridge.ACTION_IDATA_SCANRESULT);
