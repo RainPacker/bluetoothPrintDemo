@@ -90,6 +90,8 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
     private static final String ACTION_RESULT_NOTIFICATION = "com.symbol.datawedge.api.NOTIFICATION_ACTION";
     private static final String ACTION_RESULT = "com.symbol.datawedge.api.RESULT_ACTION";
     private static final String EXTRA_SET_CONFIG = "com.symbol.datawedge.api.SET_CONFIG";
+    private static final String EXTRA_CREATE_PROFILE = "com.symbol.datawedge.api.CREATE_PROFILE";
+    private static final String EXTRA_PROFILENAME = "WPS";
 
 
     public JsBridge(MainActivity mainActivity) {
@@ -621,6 +623,7 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
     public void softScan() throws InterruptedException {
         Log.d(TAG, "mScan: start...");
         // 斑马
+       this.CreateProfile();
         softTriggerScan();
 
         String callBack = "onScaned";
@@ -705,8 +708,65 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
 
         this.sendBroadcast(dwIntent);
     }
+    private void sendDataWedgeIntentWithExtra(String action, String extraKey, Bundle extras)
+    {
+        Intent dwIntent = new Intent();
+        dwIntent.setAction(action);
+        dwIntent.putExtra(extraKey, extras);
+
+        this.sendBroadcast(dwIntent);
+    }
 
     public void   sendBroadcast(Intent intent){
         this.activity.sendBroadcast(intent);
+    }
+
+
+
+    // Create profile from UI onClick() event
+    public void CreateProfile (){
+        String profileName = EXTRA_PROFILENAME;
+
+        // Send DataWedge intent with extra to create profile
+        // Use CREATE_PROFILE: http://techdocs.zebra.com/datawedge/latest/guide/api/createprofile/
+        sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_CREATE_PROFILE, profileName);
+
+        // Configure created profile to apply to this app
+        Bundle profileConfig = new Bundle();
+        profileConfig.putString("PROFILE_NAME", EXTRA_PROFILENAME);
+        profileConfig.putString("PROFILE_ENABLED", "true");
+        profileConfig.putString("CONFIG_MODE", "CREATE_IF_NOT_EXIST");  // Create profile if it does not exist
+
+        // Configure barcode input plugin
+        Bundle barcodeConfig = new Bundle();
+        barcodeConfig.putString("PLUGIN_NAME", "BARCODE");
+        barcodeConfig.putString("RESET_CONFIG", "true"); //  This is the default
+        Bundle barcodeProps = new Bundle();
+        barcodeConfig.putBundle("PARAM_LIST", barcodeProps);
+        profileConfig.putBundle("PLUGIN_CONFIG", barcodeConfig);
+
+        // Associate profile with this app
+        Bundle appConfig = new Bundle();
+        appConfig.putString("PACKAGE_NAME",this.activity.getPackageName());
+        appConfig.putStringArray("ACTIVITY_LIST", new String[]{"*"});
+        profileConfig.putParcelableArray("APP_LIST", new Bundle[]{appConfig});
+        profileConfig.remove("PLUGIN_CONFIG");
+
+        // Apply configs
+        // Use SET_CONFIG: http://techdocs.zebra.com/datawedge/latest/guide/api/setconfig/
+        sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_SET_CONFIG, profileConfig);
+
+        // Configure intent output for captured data to be sent to this app
+        Bundle intentConfig = new Bundle();
+        intentConfig.putString("PLUGIN_NAME", "INTENT");
+        intentConfig.putString("RESET_CONFIG", "true");
+        Bundle intentProps = new Bundle();
+        intentProps.putString("intent_output_enabled", "true");
+        intentProps.putString("intent_action",ACTION_ZEBRA_SCANRESULT);
+        intentProps.putString("intent_delivery", "2");
+        intentConfig.putBundle("PARAM_LIST", intentProps);
+        profileConfig.putBundle("PLUGIN_CONFIG", intentConfig);
+        sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_SET_CONFIG, profileConfig);
+
     }
 }
