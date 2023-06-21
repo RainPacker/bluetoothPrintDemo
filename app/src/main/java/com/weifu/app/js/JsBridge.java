@@ -743,6 +743,7 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
         barcodeConfig.putString("PLUGIN_NAME", "BARCODE");
         barcodeConfig.putString("RESET_CONFIG", "true"); //  This is the default
         Bundle barcodeProps = new Bundle();
+
         barcodeConfig.putBundle("PARAM_LIST", barcodeProps);
         profileConfig.putBundle("PLUGIN_CONFIG", barcodeConfig);
 
@@ -769,5 +770,24 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
         profileConfig.putBundle("PLUGIN_CONFIG", intentConfig);
         sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_SET_CONFIG, profileConfig);
 
+        // 配置 回车 BDF
+        Bundle bdfConfig = new Bundle();
+        bdfConfig.putString("PLUGIN_NAME","BDF");
+        bdfConfig.putString("RESET_CONFIG", "true");
+        bdfConfig.putString("OUTPUT_PLUGIN_NAME","KEYSTROKE");
+        Bundle bdfProps = new Bundle();
+        bdfProps.putString("bdf_enabled","true");
+        // 开启回车
+        bdfProps.putString("bdf_send_enter","true");
+        bdfConfig.putBundle("PARAM_LIST", bdfProps);
+        profileConfig.putBundle("PLUGIN_CONFIG",bdfConfig);
+        sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_SET_CONFIG, profileConfig);
+
+
     }
+
+
+
+
+
 }

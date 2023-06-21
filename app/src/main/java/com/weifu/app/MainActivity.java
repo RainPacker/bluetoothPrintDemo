@@ -75,7 +75,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
     String TAG = getClass().getSimpleName();
 //    private static final String LOADRL ="http://10.1.4.139:9001/" ;
-    private static final String LOADRL ="http://10.1.50.130:30325/" ;
+    private static final String LOADRL ="http://10.94.31.149:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10001;
     ValueCallback<Uri> mFilePathCallback;
@@ -272,10 +272,11 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
     @Override
     protected void onDestroy() {
-        super.onDestroy();
+        unregisterReceiver(jsBridge);
         webView.destroy();
         webView = null;
-        unregisterReceiver(jsBridge);
+        super.onDestroy();
+
     }
 
 
