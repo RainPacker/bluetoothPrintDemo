@@ -335,13 +335,13 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
         showProgress("连接中...");
         BleConnectOptions options = new BleConnectOptions.Builder()
 
-                .setConnectRetry(3)   // 连接如果失败重试3次
+                .setConnectRetry(8)   // 连接如果失败重试3次
 
                 .setConnectTimeout(3000)   // 连接超时3s
 
-                .setServiceDiscoverRetry(3)  // 发现服务如果失败重试3次
+                .setServiceDiscoverRetry(8)  // 发现服务如果失败重试3次
 
-                .setServiceDiscoverTimeout(20000)  // 发现服务超时20s
+                .setServiceDiscoverTimeout(60000)  // 发现服务超时20s
 
                 .build();
         mClient.connect(addrs,options, new BleConnectResponse() {
@@ -674,6 +674,11 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
             String s = intent.getStringExtra("value");
             Log.d("BarcodeTAG", "recvBarcode--" + s);
             showToast(s);
+            try {
+                onScaned(s);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
         }
         if (ACTION_ZEBRA_SCANRESULT.equals(intent.getAction())) {
             // 斑马

@@ -74,8 +74,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private static final int PROCESS_BAR_MAX = 100;
 
     String TAG = getClass().getSimpleName();
-//    private static final String LOADRL ="http://10.1.4.139:9001/" ;
-    private static final String LOADRL ="http://10.94.31.149:31223/" ;
+//        private static final String LOADRL ="http://10.1.4.139:9001/" ;
+    private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10001;
     ValueCallback<Uri> mFilePathCallback;
@@ -108,8 +108,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 //        this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
 //                WindowManager.LayoutParams.FLAG_FULLSCREEN);
   //      this.makeStatusBarTransparent(this);
-        setFullscreen(true, true);
-        setAndroidNativeLightStatusBar(this, true);
+     //   setFullscreen(true, true);
+       // setAndroidNativeLightStatusBar(this, true);
         super.onCreate(savedInstanceState);
        // initReceiver();
      //   getPermission();
