@@ -2,6 +2,7 @@ package com.weifu.app;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.graphics.Color;
 import android.os.Handler;
 import android.os.Bundle;
 import android.os.Looper;
@@ -32,6 +33,8 @@ public class SplashActivity extends AppCompatActivity {
 //            finish();
 //            return;
 //        }
+
+        getWindow().setNavigationBarColor(Color.WHITE);
 
 
         super.onCreate(savedInstanceState);

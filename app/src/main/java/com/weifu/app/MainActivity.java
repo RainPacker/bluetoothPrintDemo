@@ -110,6 +110,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
   //      this.makeStatusBarTransparent(this);
      //   setFullscreen(true, true);
        // setAndroidNativeLightStatusBar(this, true);
+        getWindow().setNavigationBarColor(Color.parseColor("#004098"));
         super.onCreate(savedInstanceState);
        // initReceiver();
      //   getPermission();
