@@ -2,11 +2,13 @@ package com.weifu.app;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.DownloadManager;
 import android.bluetooth.BluetoothAdapter;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
@@ -87,6 +89,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private ShapeLoadingDialog shapeLoadingDialog;
     private LoadingView loadingView;
     private JsBridge jsBridge;
+
+    private long exitTime;
 
 
     public final IMyBinder getPrinterBinder() {
@@ -213,8 +217,13 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                view.loadUrl(url);
-                return true;
+                // 解决webview cangoBack() 失效的问题
+                if (Build.VERSION.SDK_INT < 26) {
+                    view.loadUrl(url);
+                    return true;
+                }
+
+                return false;
             }
         });
         jsBridge = new JsBridge(this);
@@ -254,16 +263,38 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         webView.getSettings().setAllowFileAccess(true);
         webView.getSettings().getAllowUniversalAccessFromFileURLs();
         webView.getSettings().getAllowFileAccessFromFileURLs();
-        webView.setOnKeyListener((view, keyCode,  event)-> this.onKeyDown(keyCode,event));
+       // webView.setOnKeyListener((view, keyCode,  event)-> this.onKeyDown(keyCode,event));
     }
 
+    @Override
     //设置回退页面
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        Log.d(TAG, "canGoBack: "+webView.canGoBack());
         if ((keyCode == KeyEvent.KEYCODE_BACK) && webView.canGoBack()) {
             webView.goBack();
             return true;
+        }else {
+            if((keyCode == KeyEvent.KEYCODE_BACK) && ! webView.canGoBack()){
+
+                if ((System.currentTimeMillis() - exitTime) > 2000) {
+                    Toast.makeText(getApplicationContext(), "再按一次退出程序", Toast.LENGTH_SHORT).show();
+                    exitTime = System.currentTimeMillis();
+                } else {
+                    new AlertDialog.Builder(this).setTitle("提示").setMessage("确定要退出吗？").setPositiveButton("取消", null).setNegativeButton("确定", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            System.exit(0);
+                        }
+                    }).show();
+                }
+            }
+
+
+
+
+            return false;
         }
-        return super.onKeyDown(keyCode, event);
+
     }
 
     @Deprecated
