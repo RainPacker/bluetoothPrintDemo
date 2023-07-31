@@ -38,6 +38,7 @@ import com.weifu.app.scan.ScannerInterface;
 import com.weifu.utils.BluetoothUtil;
 import com.weifu.utils.EscPosUtils;
 import com.weifu.utils.PrintUtil;
+import com.zebra.printer.sdk.ZebraPrinter;
 
 import net.posprinter.posprinterface.ProcessData;
 import net.posprinter.posprinterface.TaskCallback;
@@ -47,6 +48,7 @@ import net.posprinter.utils.StringUtils;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -481,6 +483,7 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
 
                 .build();
         mClient.connect(addrs,options, new BleConnectResponse() {
+
             @Override
             public void onResponse(int code, BleGattProfile profile) {
 
@@ -495,10 +498,26 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
 
                         UUID uui2d = UUID.fromString("38eb4a82-c570-11e3-9507-0002a5d5c51b");
                         String data = printData;
+                  //      String[] splitData = data.split("");
 
-                        byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+//                        for (int i = 0; i < splitData.length ; i++) {
+//                            String cmdLine = splitData[i];
+//                            mClient.write(addrs,uuid,uui2d ,cmdLine.getBytes(), new BleWriteResponse() {
+//                                @Override
+//                                public void onResponse(int code) {
+//                                    if (code == REQUEST_SUCCESS) {
+//
+//                                    }
+//                                }
+//                            });
+//                        }
+
+                       // zpl utf-8
+                      //  byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+                        // cpcl
+                        byte[] bytes = data.getBytes(Charset.forName("gb2312"));
                         List<Byte> byteList = new ArrayList<Byte>(Arrays.asList(PrintUtil.toObjects(bytes)));
-                        List<List<Byte>> lists = PrintUtil.spliceArrays(byteList, 60);
+                        List<List<Byte>> lists = PrintUtil.spliceArrays(byteList, 20);
                         for (int i = 0; i < lists.size(); i++) {
                             List<Byte> byteList1 = lists.get(i);
                             Byte[] spilce = byteList1.toArray(new Byte[byteList1.size()]);
@@ -640,12 +659,52 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
     /**
      * js 打印
      * @param addr
-     * @param zpl
+     * @param zpl/CPCL
      */
     @JavascriptInterface
     public  void printZpl(String addr,String zpl){
+        Log.i(TAG, "printZpl: "+zpl);
          connectBle4New(addr,"2",zpl);
+       //  connecZR138(addr, "2", zpl);
     }
+  public  void   connecZR138(String addr,String type, String zpl){
+      ZebraPrinter.Close();
+      int res = ZebraPrinter.Open(0, addr);
+      activity.runOnUiThread(()->{
+          showProgress("连接中...");
+      });
+
+
+      activity.runOnUiThread(()->{
+          if (res == ZebraPrinter.ZEBRA_E_SUCCESS) {
+             showToast("连接成功");
+             ZebraPrinter.WriteData(zpl.getBytes());
+
+
+//              ZebraPrinter.CPCL_PrinterInit();
+//              ZebraPrinter.CPCL_CreateLabel(0, 120, 1);
+//              ZebraPrinter.CPCL_SetPageWidth(700);
+//              ZebraPrinter.CPCL_PrintQRCode(200, 10, 2, 5, 1, 0, "yangyang.zhang".getBytes(StandardCharsets.UTF_8));
+//              ZebraPrinter.CPCL_Print();
+
+
+          }
+      });
+
+
+      do {
+          try {
+              Thread.sleep(200);
+          } catch (InterruptedException e) {
+              e.printStackTrace();
+          }
+      } while (1 == ZebraPrinter.GetPrinterState());
+
+      activity.runOnUiThread(() ->closeProgress());
+
+
+
+  }
 
     /**
      * 获取扫码后的广播事件
