@@ -675,9 +675,22 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
      * @param addr
      * @param cpclData
      */
+    @RequiresApi(api = Build.VERSION_CODES.N)
     @JavascriptInterface
     public  void printCPCL(String addr, String cpclData){
-        connectZR138(addr, "2", cpclData);
+        if (BluetoothUtil.isBluetoothOn()) {
+            getPairedDevice();
+            List<BluetoothDevice> deviceList = this.getDevices();
+            List<BluetoothDevice> filteredDevice = deviceList.stream().filter(item -> item.getAddress().equals(addr)).collect(Collectors.toList());
+            if (filteredDevice == null || filteredDevice.isEmpty()) {
+                showToast("蓝牙设备不存在或未配对");
+                return;
+            }
+            connectZR138(addr, "2", cpclData);
+        }else {
+            showToast("蓝牙未打开");
+        }
+
 
 
     }
