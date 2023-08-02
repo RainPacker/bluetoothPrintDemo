@@ -834,7 +834,7 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
         }
         if(BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(intent.getAction())){
             Log.w(TAG, "蓝牙断开连接: ");
-            showToast("连接已经断开");
+           // showToast("连接已经断开");
             this.btConnected = false;
 
         }
