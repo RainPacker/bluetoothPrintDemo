@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DownloadManager;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -76,7 +77,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private static final int PROCESS_BAR_MAX = 100;
 
     String TAG = getClass().getSimpleName();
-//        private static final String LOADRL ="http://10.1.4.139:9001/" ;
+  //  private static final String LOADRL ="http://10.1.4.135:9001/" ;
     private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10001;
@@ -235,9 +236,10 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         actionFilters.addAction(JsBridge.ACTION_ZEBRA_SCANRESULT);
         actionFilters.addAction(Intent.ACTION_SCREEN_ON);
         actionFilters.addAction( BluetoothAdapter.ACTION_STATE_CHANGED);
+        actionFilters.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
         registerReceiver(jsBridge,actionFilters);
 
-        webView.addJavascriptInterface(new JsBridge(this), "JsBridge");
+        webView.addJavascriptInterface(jsBridge, "JsBridge");
 
         webView.setWebViewClient(new MyClient());
         webView.setWebChromeClient(new MyWebChromeClient());

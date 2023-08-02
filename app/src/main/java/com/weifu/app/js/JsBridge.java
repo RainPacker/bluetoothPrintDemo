@@ -63,6 +63,8 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
     private ProgressDialog progressDialog;
     private boolean btConnected = false;
 
+
+
     private AsyncTask mConnectTask;
 
     private BluetoothSocket mSocket;
@@ -217,7 +219,7 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
     }
 
 
-    @JavascriptInterface
+ /*   @JavascriptInterface
     public void printPaper(final String json) {
         if (!btConnected) {
             showToast("还未连接打印机");
@@ -234,7 +236,7 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
                 showToast("打印失败");
             }
         }, this);
-    }
+    }*/
 
     @Override
     public List<byte[]> processDataBeforeSend() {
@@ -665,20 +667,83 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
     public  void printZpl(String addr,String zpl){
         Log.i(TAG, "printZpl: "+zpl);
          connectBle4New(addr,"2",zpl);
-       //  connecZR138(addr, "2", zpl);
+       // connectZR138(addr, "2", zpl);
     }
-  public  void   connecZR138(String addr,String type, String zpl){
-      ZebraPrinter.Close();
-      int res = ZebraPrinter.Open(0, addr);
-      activity.runOnUiThread(()->{
-          showProgress("连接中...");
-      });
+
+    /**
+     * js 打印 cpcl
+     * @param addr
+     * @param cpclData
+     */
+    @JavascriptInterface
+    public  void printCPCL(String addr, String cpclData){
+        connectZR138(addr, "2", cpclData);
 
 
-      activity.runOnUiThread(()->{
+    }
+  public  void   connectZR138(String addr,String type, String zpl){
+      showProgress("连接中...");
+      Log.d(TAG, "btConnected: "+this.btConnected);
+      if(this.btConnected){
+          int    printerState = ZebraPrinter.GetPrinterState();
+          Log.d(TAG, "打印机状态: "+ printerState);
+          if(printerState == 3) {
+              closeProgress();
+              showToast("打印机缺纸");
+              return;
+          }
+          if(printerState == 2) {
+              closeProgress();
+              showToast("打印机盖未关闭");
+              return;
+          }
+          try{
+              ZebraPrinter.WriteData(zpl.getBytes(Charset.forName("gb2312")));
+          }catch (Exception e){
+              this.btConnected = false;
+
+              Log.e(TAG, "写数据异常: "+e.getMessage());
+              e.printStackTrace();
+          }
+
+
+      }else {
+          //重新打开
+          ZebraPrinter.Close();
+          // 关闭gatt
+          activity.getClient().disconnect(addr);
+          int res = ZebraPrinter.Open(0, addr);
+          if(res == ZebraPrinter.ZEBRA_E_NO_BTH_RADIO_OPENED){
+              closeProgress();
+              showToast("请打开蓝牙");
+              return;
+          }
           if (res == ZebraPrinter.ZEBRA_E_SUCCESS) {
-             showToast("连接成功");
-             ZebraPrinter.WriteData(zpl.getBytes());
+
+              showToast("连接成功");
+              this.btConnected = true;
+
+              Log.d(TAG, "connectZR138: 连接状态：" + res);
+              int printerState = ZebraPrinter.GetPrinterState();
+              Log.d(TAG, "打印机状态: " + printerState);
+              if (printerState == 3) {
+                  closeProgress();
+                  showToast("打印机缺纸");
+                  return;
+              }
+              if (printerState == 2) {
+                  closeProgress();
+                  showToast("打印机盖未关闭");
+                  return;
+              }
+          }else {
+              showToast("连接异常");
+              closeProgress();
+              this.btConnected = false;
+              return;
+          }
+              ZebraPrinter.WriteData(zpl.getBytes(Charset.forName("gb2312")));
+      }
 
 
 //              ZebraPrinter.CPCL_PrinterInit();
@@ -688,19 +753,19 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
 //              ZebraPrinter.CPCL_Print();
 
 
-          }
-      });
-
-
+     //监听打印机状态
       do {
           try {
               Thread.sleep(200);
+              if(progressDialog != null){
+                  progressDialog.setMessage("打印中...");
+              }
           } catch (InterruptedException e) {
               e.printStackTrace();
           }
       } while (1 == ZebraPrinter.GetPrinterState());
 
-      activity.runOnUiThread(() ->closeProgress());
+        closeProgress();
 
 
 
@@ -753,6 +818,12 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
             // 回调通知 js
 
             Log.d("BarcodeTAG", "recvBarcode--" + decodedData);
+        }
+        if(BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(intent.getAction())){
+            Log.w(TAG, "蓝牙断开连接: ");
+            showToast("连接已经断开");
+            this.btConnected = false;
+
         }
     }
 
