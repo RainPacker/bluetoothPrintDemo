@@ -57,7 +57,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-public class JsBridge extends BroadcastReceiver implements ProcessData {
+public class JsBridge extends BroadcastReceiver {
     String TAG = getClass().getSimpleName();
     private MainActivity activity;
     private ProgressDialog progressDialog;
@@ -238,61 +238,61 @@ public class JsBridge extends BroadcastReceiver implements ProcessData {
         }, this);
     }*/
 
-    @Override
-    public List<byte[]> processDataBeforeSend() {
-        List<byte[]> list = new ArrayList<>();
-
-        list.add(EscPosUtils.CUT_PAPER);
-        list.add(EscPosUtils.RESET);
-        list.add(EscPosUtils.LINE_SPACING_DEFAULT);
-        list.add(EscPosUtils.ALIGN_CENTER);
-        list.add(EscPosUtils.DOUBLE_HEIGHT_WIDTH);
-        list.add(StringUtils.strTobytes("发货单"));
-
-        list.add(EscPosUtils.NORMAL);
-        list.add(EscPosUtils.ALIGN_LEFT);
-        list.add(StringUtils.strTobytes(EscPosUtils.formatDividerLine()));
-        list.add(EscPosUtils.BOLD);
-        list.add(StringUtils.strTobytes(EscPosUtils.format3Column("商品名称", "数量/单价", "金额")));
-        list.add(EscPosUtils.BOLD_CANCEL);
-        list.add(StringUtils.strTobytes(EscPosUtils.formatDividerLine()));
-        list.add(StringUtils.strTobytes(EscPosUtils.format3Column("地方33地方", "4/1.00", "4.00")));
-        list.add(StringUtils.strTobytes(EscPosUtils.format3Column("sf面啊啊啊牛肉面啊啊啊", "888/10", "8880.00")));
-        list.add(StringUtils.strTobytes(EscPosUtils.format2Column("合计", "8884.00")));
-
-        list.add(StringUtils.strTobytes(EscPosUtils.formatDividerLine()));
-        list.add(EscPosUtils.BOLD);
-        list.add(EscPosUtils.ALIGN_CENTER);
-        list.add(StringUtils.strTobytes("买家信息"));
-        list.add(EscPosUtils.BOLD_CANCEL);
-        list.add(EscPosUtils.ALIGN_LEFT);
-        list.add(StringUtils.strTobytes(EscPosUtils.formatDividerLine()));
-        list.add(StringUtils.strTobytes(EscPosUtils.format2Column("姓名", "穿青人")));
-        list.add(StringUtils.strTobytes(EscPosUtils.format2Column("收货地址", "贵州省贵阳市花溪区xx都是x非得让他")));
-        list.add(StringUtils.strTobytes(EscPosUtils.format2Column("联系方式", "5449856555556")));
-
-        list.add(StringUtils.strTobytes(EscPosUtils.formatDividerLine()));
-        list.add(EscPosUtils.BOLD);
-        list.add(EscPosUtils.ALIGN_CENTER);
-        list.add(StringUtils.strTobytes("卖家信息"));
-        list.add(EscPosUtils.BOLD_CANCEL);
-        list.add(EscPosUtils.ALIGN_LEFT);
-        list.add(StringUtils.strTobytes(EscPosUtils.formatDividerLine()));
-        list.add(StringUtils.strTobytes(EscPosUtils.format2Column("姓名", "张三")));
-        list.add(StringUtils.strTobytes(EscPosUtils.format2Column("收货地址", "浙江省杭州市滨江区中威大厦11楼")));
-        list.add(StringUtils.strTobytes(EscPosUtils.format2Column("联系方式", "5449856555556")));
-        list.add(StringUtils.strTobytes(EscPosUtils.formatDividerLine()));
-
-        list.add(EscPosUtils.ALIGN_CENTER);
-        list.add(DataForSendToPrinterPos80.setBarcodeWidth(2));
-        list.add(DataForSendToPrinterPos80.setBarcodeHeight(80));
-        list.add(DataForSendToPrinterPos80.printBarcode(73, 10, "{B12345678"));
-
-        list.add(EscPosUtils.ALIGN_LEFT);
-        list.add(StringUtils.strTobytes(""));
-
-        return list;
-    }
+//    @Override
+//    public List<byte[]> processDataBeforeSend() {
+//        List<byte[]> list = new ArrayList<>();
+//
+//        list.add(EscPosUtils.CUT_PAPER);
+//        list.add(EscPosUtils.RESET);
+//        list.add(EscPosUtils.LINE_SPACING_DEFAULT);
+//        list.add(EscPosUtils.ALIGN_CENTER);
+//        list.add(EscPosUtils.DOUBLE_HEIGHT_WIDTH);
+//        list.add(StringUtils.strTobytes("发货单"));
+//
+//        list.add(EscPosUtils.NORMAL);
+//        list.add(EscPosUtils.ALIGN_LEFT);
+//        list.add(StringUtils.strTobytes(EscPosUtils.formatDividerLine()));
+//        list.add(EscPosUtils.BOLD);
+//        list.add(StringUtils.strTobytes(EscPosUtils.format3Column("商品名称", "数量/单价", "金额")));
+//        list.add(EscPosUtils.BOLD_CANCEL);
+//        list.add(StringUtils.strTobytes(EscPosUtils.formatDividerLine()));
+//        list.add(StringUtils.strTobytes(EscPosUtils.format3Column("地方33地方", "4/1.00", "4.00")));
+//        list.add(StringUtils.strTobytes(EscPosUtils.format3Column("sf面啊啊啊牛肉面啊啊啊", "888/10", "8880.00")));
+//        list.add(StringUtils.strTobytes(EscPosUtils.format2Column("合计", "8884.00")));
+//
+//        list.add(StringUtils.strTobytes(EscPosUtils.formatDividerLine()));
+//        list.add(EscPosUtils.BOLD);
+//        list.add(EscPosUtils.ALIGN_CENTER);
+//        list.add(StringUtils.strTobytes("买家信息"));
+//        list.add(EscPosUtils.BOLD_CANCEL);
+//        list.add(EscPosUtils.ALIGN_LEFT);
+//        list.add(StringUtils.strTobytes(EscPosUtils.formatDividerLine()));
+//        list.add(StringUtils.strTobytes(EscPosUtils.format2Column("姓名", "穿青人")));
+//        list.add(StringUtils.strTobytes(EscPosUtils.format2Column("收货地址", "贵州省贵阳市花溪区xx都是x非得让他")));
+//        list.add(StringUtils.strTobytes(EscPosUtils.format2Column("联系方式", "5449856555556")));
+//
+//        list.add(StringUtils.strTobytes(EscPosUtils.formatDividerLine()));
+//        list.add(EscPosUtils.BOLD);
+//        list.add(EscPosUtils.ALIGN_CENTER);
+//        list.add(StringUtils.strTobytes("卖家信息"));
+//        list.add(EscPosUtils.BOLD_CANCEL);
+//        list.add(EscPosUtils.ALIGN_LEFT);
+//        list.add(StringUtils.strTobytes(EscPosUtils.formatDividerLine()));
+//        list.add(StringUtils.strTobytes(EscPosUtils.format2Column("姓名", "张三")));
+//        list.add(StringUtils.strTobytes(EscPosUtils.format2Column("收货地址", "浙江省杭州市滨江区中威大厦11楼")));
+//        list.add(StringUtils.strTobytes(EscPosUtils.format2Column("联系方式", "5449856555556")));
+//        list.add(StringUtils.strTobytes(EscPosUtils.formatDividerLine()));
+//
+//        list.add(EscPosUtils.ALIGN_CENTER);
+//        list.add(DataForSendToPrinterPos80.setBarcodeWidth(2));
+//        list.add(DataForSendToPrinterPos80.setBarcodeHeight(80));
+//        list.add(DataForSendToPrinterPos80.printBarcode(73, 10, "{B12345678"));
+//
+//        list.add(EscPosUtils.ALIGN_LEFT);
+//        list.add(StringUtils.strTobytes(""));
+//
+//        return list;
+//    }
 
 
     /**
