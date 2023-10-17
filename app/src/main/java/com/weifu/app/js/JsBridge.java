@@ -15,11 +15,15 @@ import android.graphics.BitmapFactory;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.Looper;
+import android.os.Message;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 
 import com.google.gson.Gson;
@@ -97,9 +101,15 @@ public class JsBridge extends BroadcastReceiver {
     private static final String EXTRA_CREATE_PROFILE = "com.symbol.datawedge.api.CREATE_PROFILE";
     private static final String EXTRA_PROFILENAME = "WPS";
 
+    private  PrintWorkHandler printWorkHandler;
+
 
     public JsBridge(MainActivity mainActivity) {
         this.activity = mainActivity;
+        // 启动工作线程
+        HandlerThread handlerThread = new HandlerThread("print-thread");
+        handlerThread.start();
+        printWorkHandler=  new PrintWorkHandler(handlerThread.getLooper(), this);
     }
 
     public List<BluetoothDevice> getDevices() {
@@ -666,6 +676,7 @@ public class JsBridge extends BroadcastReceiver {
     @JavascriptInterface
     public  void printZpl(String addr,String zpl){
         Log.i(TAG, "printZpl: "+zpl);
+        //改成异步
          connectBle4New(addr,"2",zpl);
        // connectZR138(addr, "2", zpl);
     }
@@ -686,7 +697,21 @@ public class JsBridge extends BroadcastReceiver {
                 showToast("蓝牙设备不存在或未配对");
                 return;
             }
-            connectZR138(addr, "2", cpclData);
+            //connectZR138(addr, "2", cpclData);
+            Message message = new Message();
+            message.what= 0;
+            Bundle bundle = new Bundle();
+            bundle.putString("addr",addr);
+            bundle.putString("data", cpclData);
+            message.setData(bundle);
+
+            printWorkHandler.sendMessage(message);
+
+       /*     // 尝试异步
+            new Thread(()-> {
+
+            },"'print").start();*/
+
         }else {
             showToast("蓝牙未打开");
         }
@@ -694,19 +719,38 @@ public class JsBridge extends BroadcastReceiver {
 
 
     }
+private  static  class PrintWorkHandler extends Handler {
+     private JsBridge jsBridge;
+
+
+    private PrintWorkHandler(Looper looper,JsBridge jsBridge) {
+        super(looper);
+        this.jsBridge = jsBridge;
+
+    }
+    @Override
+    public void handleMessage(@NonNull Message msg) {
+        String addr = msg.getData().getString("addr");
+        String data = msg.getData().getString("data");
+        Log.d("JsBridge.handleMessage", "handleMessage:addr: "+addr+" data:"+ data);
+           jsBridge.connectZR138(addr,"2", data);
+
+    }
+}
+
   public  void   connectZR138(String addr,String type, String zpl){
-      showProgress("连接中...");
+  //    showProgress("连接中...");
       Log.d(TAG, "btConnected: "+this.btConnected);
       if(this.btConnected){
           int    printerState = ZebraPrinter.GetPrinterState();
           Log.d(TAG, "打印机状态: "+ printerState);
           if(printerState == 3) {
-              closeProgress();
+         //     closeProgress();
               showToast("打印机缺纸");
               return;
           }
           if(printerState == 2) {
-              closeProgress();
+          //    closeProgress();
               showToast("打印机盖未关闭");
               return;
           }
@@ -727,7 +771,7 @@ public class JsBridge extends BroadcastReceiver {
           activity.getClient().disconnect(addr);
           int res = ZebraPrinter.Open(0, addr);
           if(res == ZebraPrinter.ZEBRA_E_NO_BTH_RADIO_OPENED){
-              closeProgress();
+        //      closeProgress();
               showToast("请打开蓝牙");
               return;
           }
@@ -740,12 +784,12 @@ public class JsBridge extends BroadcastReceiver {
               int printerState = ZebraPrinter.GetPrinterState();
               Log.d(TAG, "打印机状态: " + printerState);
               if (printerState == 3) {
-                  closeProgress();
+           //       closeProgress();
                   showToast("打印机缺纸");
                   return;
               }
               if (printerState == 2) {
-                  closeProgress();
+              //    closeProgress();
                   showToast("打印机盖未关闭");
                   return;
               }
