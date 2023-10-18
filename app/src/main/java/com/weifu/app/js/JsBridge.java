@@ -1,8 +1,13 @@
 package com.weifu.app.js;
 
 
+import static android.content.Context.NOTIFICATION_SERVICE;
+import static androidx.core.content.ContextCompat.getSystemService;
 import static com.inuker.bluetooth.library.Code.REQUEST_SUCCESS;
 
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.ProgressDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -20,11 +25,13 @@ import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
+import android.util.Patterns;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
+import androidx.core.app.NotificationCompat;
 
 import com.google.gson.Gson;
 import com.inuker.bluetooth.library.BluetoothClient;
@@ -59,6 +66,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class JsBridge extends BroadcastReceiver {
@@ -688,7 +697,7 @@ public class JsBridge extends BroadcastReceiver {
      */
     @RequiresApi(api = Build.VERSION_CODES.N)
     @JavascriptInterface
-    public  void printCPCL(String addr, String cpclData){
+    public  void printCPCL(String addr, String cpclData,String orderNo){
         if (BluetoothUtil.isBluetoothOn()) {
             getPairedDevice();
             List<BluetoothDevice> deviceList = this.getDevices();
@@ -703,6 +712,7 @@ public class JsBridge extends BroadcastReceiver {
             Bundle bundle = new Bundle();
             bundle.putString("addr",addr);
             bundle.putString("data", cpclData);
+            bundle.putString("orderNo",orderNo);
             message.setData(bundle);
 
             printWorkHandler.sendMessage(message);
@@ -732,13 +742,14 @@ private  static  class PrintWorkHandler extends Handler {
     public void handleMessage(@NonNull Message msg) {
         String addr = msg.getData().getString("addr");
         String data = msg.getData().getString("data");
-        Log.d("JsBridge.handleMessage", "handleMessage:addr: "+addr+" data:"+ data);
-           jsBridge.connectZR138(addr,"2", data);
+        String orderNo = msg.getData().getString("orderNo");
+        Log.d("JsBridge.handleMessage", "handleMessage:addr: "+addr+" data:"+ data+" orderNo:"+orderNo);
+           jsBridge.connectZR138(addr,"2", data,orderNo);
 
     }
 }
 
-  public  void   connectZR138(String addr,String type, String zpl){
+  public  void   connectZR138(String addr,String type, String zpl,String orerNo){
   //    showProgress("连接中...");
       Log.d(TAG, "btConnected: "+this.btConnected);
       if(this.btConnected){
@@ -821,8 +832,20 @@ private  static  class PrintWorkHandler extends Handler {
               e.printStackTrace();
           }
       } while (1 == ZebraPrinter.GetPrinterState());
+      Log.d(TAG, "connectZR138: 打印完成....");
+      NotificationManager manager = (NotificationManager)this.activity.getSystemService(NOTIFICATION_SERVICE);
+      String id = "wps";
+      String name = "wpsChann";
+      String contentText = "分拣单"+orerNo+"打印完成";
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+          NotificationChannel channel = new NotificationChannel(id, name, NotificationManager.IMPORTANCE_DEFAULT);
+          manager.createNotificationChannel(channel);
+          Notification notification = new NotificationCompat.Builder(this.activity, "printNotice").setChannelId(id).setAutoCancel(true).setSmallIcon(R.drawable.logo_00b09c96).setContentText(contentText).build();
+          manager.notify(1,notification);
+      }
 
-        closeProgress();
+
+      closeProgress();
 
 
 
