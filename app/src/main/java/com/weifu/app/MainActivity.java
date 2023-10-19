@@ -1,4 +1,6 @@
 package com.weifu.app;
+import static android.app.PendingIntent.getActivity;
+
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -22,6 +24,7 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.StrictMode;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -56,11 +59,13 @@ import com.symbol.emdk.barcode.ScannerResults;
 import com.symbol.emdk.barcode.StatusData;
 import com.weifu.action.PermissionsResultAction;
 import com.weifu.app.js.JsBridge;
+import com.weifu.app.version.UpdateManager;
 import com.weifu.utils.PermissionsManager;
 
 import net.posprinter.posprinterface.IMyBinder;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -266,6 +271,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         webView.getSettings().getAllowUniversalAccessFromFileURLs();
         webView.getSettings().getAllowFileAccessFromFileURLs();
        // webView.setOnKeyListener((view, keyCode,  event)-> this.onKeyDown(keyCode,event));
+        updateApk();
     }
 
     @Override
@@ -669,6 +675,25 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         }
     }
 
+
+    /**
+     * 更新应用
+     */
+    private void updateApk(){
+        if (android.os.Build.VERSION.SDK_INT > 9) {
+            StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
+            StrictMode.setThreadPolicy(policy);
+        }
+
+        // 版本更新检查
+        UpdateManager um = new UpdateManager(MainActivity.this);
+        try {
+            um.checkUpdate(this.getString(R.string.version_url));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
 
 
 
