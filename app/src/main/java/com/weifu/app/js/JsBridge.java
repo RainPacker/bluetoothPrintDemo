@@ -1008,6 +1008,7 @@ private  static  class PrintWorkHandler extends Handler {
      */
     @JavascriptInterface
    public  void   sanQR() {
+        Log.d(TAG, "sanQR: ");
         Intent intent = new Intent(this.activity, CaptureActivity.class);
        activity.startActivityForResult(intent,SCAN_QR_REQUEST_CODE);
    }

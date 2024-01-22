@@ -84,7 +84,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
     String TAG = getClass().getSimpleName();
     // prod
-    private static final String LOADRL ="http://10.1.50.130:30325/" ;
+  //  private static final String LOADRL ="http://10.1.50.130:30325/" ;
+    private static final String LOADRL ="file:///android_asset/test.html" ;
    // private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10001;
@@ -351,6 +352,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
                 if (data != null) {
                     String content = data.getStringExtra(Constant.CODED_CONTENT);
                     Log.i(TAG, "onActivityResult:扫码内容："+content);
+                    String method = "javascript:qrResult('" + content + "')";
+                    webView.loadUrl(method);
                 }
 
             }
