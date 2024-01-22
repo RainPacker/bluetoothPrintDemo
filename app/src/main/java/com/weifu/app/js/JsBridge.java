@@ -49,6 +49,7 @@ import com.weifu.app.scan.ScannerInterface;
 import com.weifu.utils.BluetoothUtil;
 import com.weifu.utils.EscPosUtils;
 import com.weifu.utils.PrintUtil;
+import com.yzq.zxinglibrary.android.CaptureActivity;
 import com.zebra.printer.sdk.ZebraPrinter;
 
 import net.posprinter.posprinterface.ProcessData;
@@ -71,6 +72,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class JsBridge extends BroadcastReceiver {
+    public static final int SCAN_QR_REQUEST_CODE = 10001 ;
     String TAG = getClass().getSimpleName();
     private MainActivity activity;
     private ProgressDialog progressDialog;
@@ -1001,7 +1003,14 @@ private  static  class PrintWorkHandler extends Handler {
 
     }
 
-
+    /**
+     * webview 实现扫一扫 打开摄像头
+     */
+    @JavascriptInterface
+   public  void   sanQR() {
+        Intent intent = new Intent(this.activity, CaptureActivity.class);
+       activity.startActivityForResult(intent,SCAN_QR_REQUEST_CODE);
+   }
 
 
 

@@ -61,6 +61,7 @@ import com.weifu.action.PermissionsResultAction;
 import com.weifu.app.js.JsBridge;
 import com.weifu.app.version.UpdateManager;
 import com.weifu.utils.PermissionsManager;
+import com.yzq.zxinglibrary.common.Constant;
 
 import net.posprinter.posprinterface.IMyBinder;
 
@@ -342,6 +343,16 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
             }else{
                 Log.i(TAG, "onActivityResult: 用户允许请求");
                 getPermission();
+            }
+        }
+        //  扫一扫
+        if (JsBridge.SCAN_QR_REQUEST_CODE == requestCode) {
+            if (resultCode == RESULT_OK) {
+                if (data != null) {
+                    String content = data.getStringExtra(Constant.CODED_CONTENT);
+                    Log.i(TAG, "onActivityResult:扫码内容："+content);
+                }
+
             }
         }
     }

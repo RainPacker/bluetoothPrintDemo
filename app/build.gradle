@@ -56,4 +56,5 @@ dependencies {
     implementation 'com.inuker.bluetooth:library:1.4.0'
     implementation 'com.symbol:emdk:+'
     implementation 'com.github.zzz40500:android-shapeLoadingView:1.0.3.2'
+    implementation 'com.github.yuzhiqiang1993:zxing:2.2.5'
 }
