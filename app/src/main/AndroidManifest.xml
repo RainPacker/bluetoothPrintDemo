@@ -42,6 +42,7 @@
             android:authorities="com.weifu.iwms.fileprovider"
             android:name="androidx.core.content.FileProvider"
             android:grantUriPermissions="true"
+            android:screenOrientation="fullSensor"
             android:exported="false">
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"

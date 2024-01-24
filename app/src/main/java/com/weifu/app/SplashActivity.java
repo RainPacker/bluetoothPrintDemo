@@ -2,10 +2,12 @@ package com.weifu.app;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.os.Handler;
 import android.os.Bundle;
 import android.os.Looper;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.Window;
@@ -33,7 +35,16 @@ public class SplashActivity extends AppCompatActivity {
 //            finish();
 //            return;
 //        }
-
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+        float screenWidth = displayMetrics.widthPixels / displayMetrics.density;
+        float screenHeight = displayMetrics.heightPixels / displayMetrics.density;
+        Log.w(TAG, "onCreate: "+ screenWidth+"::"+screenHeight);
+        if (screenWidth > 890) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        } else {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+        }
         getWindow().setNavigationBarColor(Color.WHITE);
 
 

@@ -14,6 +14,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Color;
@@ -26,6 +27,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.StrictMode;
 import android.provider.MediaStore;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
@@ -84,8 +86,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
     String TAG = getClass().getSimpleName();
     // prod
-  //  private static final String LOADRL ="http://10.1.50.130:30325/" ;
-    private static final String LOADRL ="file:///android_asset/test.html" ;
+    private static final String LOADRL ="http://10.1.50.130:30325/" ;
+//    private static final String LOADRL ="file:///android_asset/test.html" ;
    // private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10001;
@@ -147,6 +149,21 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         webView = findViewById(R.id.web_view);
         webView.getSettings().setJavaScriptEnabled(true);
         webView.setWebViewClient(new WebViewClient());
+
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+        float screenWidth = displayMetrics.widthPixels / displayMetrics.density;
+        float screenHeight = displayMetrics.heightPixels / displayMetrics.density;
+        Log.w(TAG, "onCreate: "+ screenWidth+"::"+screenHeight);
+        if (screenWidth > 890) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        } else {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+        }
+//        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        // 横屏
+        webView.getSettings().setLoadWithOverviewMode(true);
+        webView.getSettings().setUseWideViewPort(true);
         webView.setWebChromeClient(new WebChromeClient() {
             // Andorid 4.1----4.4
             public void openFileChooser(ValueCallback<Uri> uploadFile, String acceptType, String capture) {
