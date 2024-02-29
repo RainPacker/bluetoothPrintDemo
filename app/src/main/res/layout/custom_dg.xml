@@ -7,7 +7,7 @@
     android:orientation="vertical">
 
     <LinearLayout
-        android:layout_width="300dp"
+        android:layout_width="310dp"
         android:layout_height="wrap_content"
         android:background="@drawable/rect_s_rounded_white"
         android:orientation="vertical">
@@ -39,6 +39,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textColor="@android:color/holo_red_dark"
+                android:gravity="center_horizontal"
                 android:textSize="@dimen/size_14" />
 
             <TextView
@@ -47,6 +48,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/margin_10"
                 android:textColor="@android:color/black"
+                android:gravity="center_horizontal"
                 android:textSize="@dimen/size_14" />
         </LinearLayout>
 
@@ -73,6 +75,7 @@
                 android:id="@+id/btn_confirm"
                 android:layout_width="110dp"
                 android:layout_height="40dp"
+                android:gravity="center"
                 android:background="@drawable/button_green_l_rounded_selector"
                 android:textColor="@android:color/white"
                 android:textSize="@dimen/size_14" />

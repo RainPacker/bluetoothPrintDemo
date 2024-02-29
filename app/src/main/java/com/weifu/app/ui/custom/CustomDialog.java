@@ -2,6 +2,7 @@ package com.weifu.app.ui.custom;
 
 import android.app.Dialog;
 import android.content.Context;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -9,6 +10,8 @@ import android.widget.Button;
 import android.widget.TextView;
 
 import com.weifu.app.R;
+
+import net.posprinter.utils.StringUtils;
 
 /**
  * @author yangyang.zhang
@@ -118,7 +121,10 @@ public class CustomDialog extends Dialog {
  
 			mDialog.setContentView(mLayout);
 			mDialog.setCancelable(true); 
-			mDialog.setCanceledOnTouchOutside(false); 
+			mDialog.setCanceledOnTouchOutside(false);
+			if(btnCancel.getText() ==null || "".equals(btnCancel.getText())){
+				btnCancel.setVisibility(View.GONE);
+			}
 			return mDialog;
 		}
 	}

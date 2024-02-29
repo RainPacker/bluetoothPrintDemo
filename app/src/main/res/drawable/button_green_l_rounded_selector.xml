@@ -6,8 +6,8 @@
             <stroke android:color="@android:color/transparent" android:width="0dp"></stroke>
 
             <gradient android:angle="180"
-                android:endColor="@color/button_green"
-                android:startColor="@color/button_green"></gradient>
+                android:endColor="@color/purple_500"
+                android:startColor="@color/purple_500"></gradient>
 
             <corners android:radius="50dp"></corners>
         </shape>
@@ -18,8 +18,8 @@
             <stroke android:color="@android:color/transparent" android:width="0dp"></stroke>
 
             <gradient android:angle="180"
-                android:endColor="@color/button_green"
-                android:startColor="@color/button_green"></gradient>
+                android:endColor="@color/purple_500"
+                android:startColor="@color/purple_500"></gradient>
 
             <corners android:radius="50dp"></corners>
         </shape>
@@ -30,8 +30,8 @@
             <stroke android:color="@android:color/transparent" android:width="0dp"></stroke>
 
             <gradient android:angle="0"
-                android:endColor="@color/button_green"
-                android:startColor="@color/button_green"></gradient>
+                android:endColor="@color/purple_500"
+                android:startColor="@color/purple_500"></gradient>
 
             <corners android:radius="50dp"></corners>
         </shape>
@@ -42,8 +42,8 @@
             <stroke android:color="@android:color/transparent" android:width="0dp"></stroke>
 
             <gradient android:angle="0"
-                android:endColor="@color/button_green"
-                android:startColor="@color/button_green"></gradient>
+                android:endColor="@color/purple_500"
+                android:startColor="@color/purple_500"></gradient>
 
             <corners android:radius="50dp"></corners>
         </shape>

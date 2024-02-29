@@ -310,12 +310,17 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
                     Toast.makeText(getApplicationContext(), "再按一次退出程序", Toast.LENGTH_SHORT).show();
                     exitTime = System.currentTimeMillis();
                 } else {
-                    new AlertDialog.Builder(this).setTitle("提示").setMessage("确定要退出吗？").setPositiveButton("取消", null).setNegativeButton("确定", new DialogInterface.OnClickListener() {
+                    new CustomDialog.Builder(this).setTitle("提示").setInfo("确定要退出吗？").setButtonCancel("取消", new View.OnClickListener() {
                         @Override
-                        public void onClick(DialogInterface dialog, int which) {
+                        public void onClick(View v) {
+
+                        }
+                    }).setButtonConfirm("确定", new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
                             System.exit(0);
                         }
-                    }).show();
+                    }).create().show();
                 }
             }
 
