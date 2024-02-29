@@ -61,6 +61,7 @@ import com.symbol.emdk.barcode.ScannerResults;
 import com.symbol.emdk.barcode.StatusData;
 import com.weifu.action.PermissionsResultAction;
 import com.weifu.app.js.JsBridge;
+import com.weifu.app.ui.custom.CustomDialog;
 import com.weifu.app.version.UpdateManager;
 import com.weifu.utils.PermissionsManager;
 import com.yzq.zxinglibrary.common.Constant;
@@ -292,6 +293,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         webView.getSettings().getAllowFileAccessFromFileURLs();
        // webView.setOnKeyListener((view, keyCode,  event)-> this.onKeyDown(keyCode,event));
         updateApk();
+        showInfoDialog("","xxx","取消",null,"ok",null);
     }
 
     @Override
@@ -726,6 +728,20 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         }
 
     }
+
+
+    protected void showInfoDialog(String waring, String info, String cancelText, View.OnClickListener cancelOnClick, String confirmText, View.OnClickListener confirmOnClick) {
+        CustomDialog.Builder builder = new CustomDialog.Builder(this);
+        builder.setTitle("提示");
+        builder.setWarning(waring);
+        builder.setInfo(info);
+        builder.setButtonCancel(cancelText, cancelOnClick);
+        builder.setButtonConfirm(confirmText, confirmOnClick);
+
+        CustomDialog customDialog = builder.create();
+        customDialog.show();
+    }
+
 
 
 
