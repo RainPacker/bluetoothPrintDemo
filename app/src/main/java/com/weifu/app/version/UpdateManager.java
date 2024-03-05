@@ -34,6 +34,7 @@ import androidx.core.graphics.PathUtils;
 
 import com.weifu.app.BuildConfig;
 import com.weifu.app.R;
+import com.weifu.app.ui.custom.CustomDialog;
 import com.weifu.utils.XMLParserUtil;
 
 
@@ -140,16 +141,18 @@ public class UpdateManager {
 	}
  
 	public void showErrorDialog(){
-		Builder builder = new Builder(mContext);
+		CustomDialog.Builder	 builder = new CustomDialog.Builder(mContext);
 		builder.setTitle("提示");
-		builder.setMessage("网络或软件版本信息有错误，数据无法下载,请到网页下载最新版本软件");
-		builder.setPositiveButton("确定", new OnClickListener() {
+		builder.setInfo("网络或软件版本信息有错误，数据无法下载,请联系管理员");
+		builder.setButtonConfirm("确定", new View.OnClickListener() {
+
 			@Override
-			public void onClick(DialogInterface dialog, int which) {
-				dialog.dismiss();
+			public void onClick(View customDgv) {
+			
 			}
 		});
-		builder.show();
+		CustomDialog customDg =	builder.create();
+		customDg.show();
 	}
 	/**
 	 * 提示更新对话框

@@ -87,7 +87,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
     String TAG = getClass().getSimpleName();
     // prod
-    private static final String LOADRL ="http://10.1.50.130:30325/" ;
+    private static final String LOADRL ="http://10.204.10.28:31237//" ;
 //    private static final String LOADRL ="file:///android_asset/test.html" ;
    // private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
@@ -293,7 +293,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         webView.getSettings().getAllowFileAccessFromFileURLs();
        // webView.setOnKeyListener((view, keyCode,  event)-> this.onKeyDown(keyCode,event));
         updateApk();
-        showInfoDialog("","xxx","取消",null,"ok",null);
+//        showInfoDialog("","xxx","取消",null,"ok",null);
     }
 
     @Override
