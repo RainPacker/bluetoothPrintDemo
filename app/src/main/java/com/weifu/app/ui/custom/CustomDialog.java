@@ -120,7 +120,7 @@ public class CustomDialog extends Dialog {
 			});
  
 			mDialog.setContentView(mLayout);
-			mDialog.setCancelable(true); 
+			mDialog.setCancelable(false);
 			mDialog.setCanceledOnTouchOutside(false);
 			if(btnCancel.getText() ==null || "".equals(btnCancel.getText())){
 				btnCancel.setVisibility(View.GONE);

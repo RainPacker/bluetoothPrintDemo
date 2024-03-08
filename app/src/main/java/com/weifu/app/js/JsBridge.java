@@ -15,6 +15,7 @@ import android.bluetooth.BluetoothSocket;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.AsyncTask;
@@ -27,6 +28,8 @@ import android.os.Message;
 import android.util.Log;
 import android.util.Patterns;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -46,10 +49,13 @@ import com.symbol.emdk.barcode.ScannerException;
 import com.weifu.app.MainActivity;
 import com.weifu.app.R;
 import com.weifu.app.scan.ScannerInterface;
+import com.weifu.app.ui.custom.MyScan;
 import com.weifu.utils.BluetoothUtil;
 import com.weifu.utils.EscPosUtils;
 import com.weifu.utils.PrintUtil;
 import com.yzq.zxinglibrary.android.CaptureActivity;
+import com.yzq.zxinglibrary.bean.ZxingConfig;
+import com.yzq.zxinglibrary.common.Constant;
 import com.zebra.printer.sdk.ZebraPrinter;
 
 import net.posprinter.posprinterface.ProcessData;
@@ -1009,8 +1015,23 @@ private  static  class PrintWorkHandler extends Handler {
     @JavascriptInterface
    public  void   sanQR() {
         Log.d(TAG, "sanQR: ");
-        Intent intent = new Intent(this.activity, CaptureActivity.class);
+        Intent intent = new Intent(this.activity, MyScan.class);
+
+        ZxingConfig zxingConfig = new ZxingConfig();
+        zxingConfig.setPlayBeep(true);
+        intent.putExtra(Constant.INTENT_ZXING_CONFIG,zxingConfig);
        activity.startActivityForResult(intent,SCAN_QR_REQUEST_CODE);
+   }
+
+    /**
+     * 清理webview 缓存
+     */
+   @JavascriptInterface
+   public  void  clearWebCache(){
+       WebView webView = this.activity.getWebView();
+       webView.clearCache(true);
+
+
    }
 
 

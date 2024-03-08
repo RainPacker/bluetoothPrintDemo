@@ -159,23 +159,24 @@ public class UpdateManager {
 	 *
 	 */
 	private void showUpdateDialog() {
-		Builder builder = new Builder(mContext);
+		CustomDialog.Builder builder = new CustomDialog. Builder(mContext);
 		builder.setTitle("版本更新");
-		builder.setMessage(info.getDisplayMessage());
-		builder.setCancelable(false);
-		builder.setPositiveButton("下载", new OnClickListener() {
+		builder.setInfo(info.getDisplayMessage());
+
+		builder.setButtonConfirm("下载", new View.OnClickListener() {
 			@Override
-			public void onClick(DialogInterface dialog, int which) {
-				dialog.dismiss();
+			public void onClick(View v) {
 				// 弹出下载框
 				showDownloadDialog();
 			}
+
 		});
-		builder.setNegativeButton("以后再说", new OnClickListener() {
+		builder.setButtonCancel("以后再说", new View.OnClickListener() {
 			@Override
-			public void onClick(DialogInterface dialog, int which) {
-				dialog.dismiss();
+			public void onClick(View v) {
+
 			}
+
 		});
 		builder.create().show();
 	}

@@ -41,9 +41,9 @@ public class SplashActivity extends AppCompatActivity {
         float screenHeight = displayMetrics.heightPixels / displayMetrics.density;
         Log.w(TAG, "onCreate: "+ screenWidth+"::"+screenHeight);
         if (screenWidth > 890) {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         } else {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         }
         getWindow().setNavigationBarColor(Color.WHITE);
 

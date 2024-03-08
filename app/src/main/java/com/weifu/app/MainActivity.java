@@ -87,8 +87,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
     String TAG = getClass().getSimpleName();
     // prod
-    private static final String LOADRL ="http://10.204.10.28:31237//" ;
-//    private static final String LOADRL ="file:///android_asset/test.html" ;
+//    private static final String LOADRL ="http://10.1.4.23" ;
+    private static final String LOADRL ="file:///android_asset/test.html" ;
    // private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10001;
@@ -157,9 +157,9 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         float screenHeight = displayMetrics.heightPixels / displayMetrics.density;
         Log.w(TAG, "onCreate: "+ screenWidth+"::"+screenHeight);
         if (screenWidth > 890) {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         } else {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         }
 //        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         // 横屏
