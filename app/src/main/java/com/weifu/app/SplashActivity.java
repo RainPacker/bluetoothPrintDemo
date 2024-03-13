@@ -1,12 +1,15 @@
 package com.weifu.app;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.os.Handler;
 import android.os.Bundle;
 import android.os.Looper;
+import android.telephony.TelephonyManager;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -35,16 +38,22 @@ public class SplashActivity extends AppCompatActivity {
 //            finish();
 //            return;
 //        }
+        WindowManager windowManager = (WindowManager) this.getSystemService(Context.WINDOW_SERVICE);
         DisplayMetrics displayMetrics = new DisplayMetrics();
-        getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
-        float screenWidth = displayMetrics.widthPixels / displayMetrics.density;
-        float screenHeight = displayMetrics.heightPixels / displayMetrics.density;
-        Log.w(TAG, "onCreate: "+ screenWidth+"::"+screenHeight);
-        if (screenWidth > 890) {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        windowManager.getDefaultDisplay().getMetrics(displayMetrics);
+
+        int width = displayMetrics.widthPixels;
+        int height = displayMetrics.heightPixels;
+        TelephonyManager telephonyManager = (TelephonyManager) this.getSystemService(Context.TELEPHONY_SERVICE);
+        if (telephonyManager.getPhoneType() == TelephonyManager.PHONE_TYPE_NONE) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         } else {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
         }
+
+
+        Log.w(TAG, "onCreate: "+ width+"::"+height);
+
         getWindow().setNavigationBarColor(Color.WHITE);
 
 

@@ -24,9 +24,9 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@drawable/logo_00b09c96"
+        android:icon="@drawable/logo"
         android:label="@string/app_name"
-        android:roundIcon="@drawable/logo_00b09c96"
+        android:roundIcon="@drawable/log_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Hyoa"
         android:usesCleartextTraffic="true"

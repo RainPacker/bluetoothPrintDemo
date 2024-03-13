@@ -17,7 +17,11 @@ import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Build;
 //import android.support.v7.app.AppCompatActivity;
@@ -25,8 +29,11 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Parcelable;
 import android.os.StrictMode;
 import android.provider.MediaStore;
+import android.telephony.TelephonyManager;
+import android.text.format.DateFormat;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -45,6 +52,7 @@ import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.FileProvider;
 
 
 import com.inuker.bluetooth.library.BluetoothClient;
@@ -70,13 +78,17 @@ import net.posprinter.posprinterface.IMyBinder;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 public class MainActivity extends AppCompatActivity /**implements Scanner.DataListener, EMDKManager.EMDKListener**/ {
      private static final int REQUEST_OPEN = 0X01;
+    private static final String COM_WEIFU_IWMS_FILEPROVIDE = "com.weifu.iwms.fileprovider";
 
     private EMDKManager emdkManager = null;
     private BarcodeManager barcodeManager = null;
@@ -87,11 +99,12 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
     String TAG = getClass().getSimpleName();
     // prod
-//    private static final String LOADRL ="http://10.1.4.23" ;
-    private static final String LOADRL ="file:///android_asset/test.html" ;
+//    private static final String LOADRL ="http://10.204.10.28:31237" ;
+    private static final String LOADRL ="http://10.1.4.151" ;
+//    private static final String LOADRL ="file:///android_asset/test.html" ;
    // private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
-    private final int PICK_REQUEST = 10001;
+    private final int PICK_REQUEST = 10011;
     ValueCallback<Uri> mFilePathCallback;
     ValueCallback<Uri[]> mFilePathCallbackArray;
     private IMyBinder printerBinder;
@@ -103,6 +116,11 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private JsBridge jsBridge;
 
     private long exitTime;
+
+    private String cameraPhotoPath;
+    private ValueCallback<Uri> mUploadCallbackBelow;
+    private Uri imageUri;
+    private ValueCallback<Uri[]> mUploadCallbackAboveL;
 
 
     public final IMyBinder getPrinterBinder() {
@@ -151,51 +169,23 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         webView.getSettings().setJavaScriptEnabled(true);
         webView.setWebViewClient(new WebViewClient());
 
+        WindowManager windowManager = (WindowManager) this.getSystemService(Context.WINDOW_SERVICE);
         DisplayMetrics displayMetrics = new DisplayMetrics();
-        getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
-        float screenWidth = displayMetrics.widthPixels / displayMetrics.density;
-        float screenHeight = displayMetrics.heightPixels / displayMetrics.density;
-        Log.w(TAG, "onCreate: "+ screenWidth+"::"+screenHeight);
-        if (screenWidth > 890) {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        windowManager.getDefaultDisplay().getMetrics(displayMetrics);
+
+        int width = displayMetrics.widthPixels;
+        int height = displayMetrics.heightPixels;
+        TelephonyManager telephonyManager = (TelephonyManager) this.getSystemService(Context.TELEPHONY_SERVICE);
+        if (telephonyManager.getPhoneType() == TelephonyManager.PHONE_TYPE_NONE) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         } else {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
         }
+        Log.w(TAG, "onCreate: "+ width+"::"+height);
 //        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         // 横屏
         webView.getSettings().setLoadWithOverviewMode(true);
         webView.getSettings().setUseWideViewPort(true);
-        webView.setWebChromeClient(new WebChromeClient() {
-            // Andorid 4.1----4.4
-            public void openFileChooser(ValueCallback<Uri> uploadFile, String acceptType, String capture) {
-
-                mFilePathCallback = uploadFile;
-                handle(uploadFile);
-            }
-
-            // for 5.0+
-            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
-                if (mFilePathCallbackArray != null) {
-                    mFilePathCallbackArray.onReceiveValue(null);
-                }
-                mFilePathCallbackArray = filePathCallback;
-                handleup(filePathCallback);
-                return true;
-            }
-
-            private void handle(ValueCallback<Uri> uploadFile) {
-                Intent intent = new Intent(Intent.ACTION_PICK);
-                // 设置允许上传的文件类型
-                intent.setType("*/*");
-                startActivityForResult(intent, PICK_REQUEST);
-            }
-
-            private void handleup(ValueCallback<Uri[]> uploadFile) {
-                Intent intent = new Intent(Intent.ACTION_PICK);
-                intent.setType("*/*");
-                startActivityForResult(intent, PICK_REQUEST);
-            }
-        });
 
         // wevView监听 H5 页面的下载事件
         webView.setDownloadListener(new DownloadListener() {
@@ -291,6 +281,9 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         webView.getSettings().setAllowFileAccess(true);
         webView.getSettings().getAllowUniversalAccessFromFileURLs();
         webView.getSettings().getAllowFileAccessFromFileURLs();
+        // 禁用缓存
+        webView.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
+        webView.getSettings().setAppCacheEnabled(false);
        // webView.setOnKeyListener((view, keyCode,  event)-> this.onKeyDown(keyCode,event));
         updateApk();
 //        showInfoDialog("","xxx","取消",null,"ok",null);
@@ -351,25 +344,16 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         super.onActivityResult(requestCode, resultCode, data);
 
         if (requestCode == PICK_REQUEST) {
-            if (null != data) {
-                Uri uri = data.getData();
-                handleCallback(uri);
+            // 经过上边(1)、(2)两个赋值操作，此处即可根据其值是否为空来决定采用哪种处理方法
+            if (mUploadCallbackBelow != null) {
+                chooseBelow(resultCode, data);
+            } else if (mUploadCallbackAboveL != null) {
+                chooseAbove(resultCode, data);
             } else {
-                // 取消了照片选取的时候调用
-                handleCallback(null);
-            }
-        } else {
-            // 取消了照片选取的时候调用
-            handleCallback(null);
-        }
-        if(REQUEST_OPEN==requestCode){
-            if(resultCode==RESULT_CANCELED){
-                Log.i(TAG, "onActivityResult: 用户拒绝请求");
-            }else{
-                Log.i(TAG, "onActivityResult: 用户允许请求");
-                getPermission();
+                Toast.makeText(this, "发生错误", Toast.LENGTH_SHORT).show();
             }
         }
+
         //  扫一扫
         if (JsBridge.SCAN_QR_REQUEST_CODE == requestCode) {
             if (resultCode == RESULT_OK) {
@@ -384,6 +368,80 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         }
     }
 
+
+    /**
+     * Android API < 21(Android 5.0)版本的回调处理
+     * @param resultCode 选取文件或拍照的返回码
+     * @param data 选取文件或拍照的返回结果
+     */
+    private void chooseBelow(int resultCode, Intent data) {
+        Log.e("WangJ", "返回调用方法--chooseBelow");
+
+        if (RESULT_OK == resultCode) {
+            updatePhotos();
+
+            if (data != null) {
+                // 这里是针对文件路径处理
+                Uri uri = data.getData();
+                if (uri != null) {
+                    Log.e("WangJ", "系统返回URI：" + uri.toString());
+                    mUploadCallbackBelow.onReceiveValue(uri);
+                } else {
+                    mUploadCallbackBelow.onReceiveValue(null);
+                }
+            } else {
+                // 以指定图像存储路径的方式调起相机，成功后返回data为空
+                Log.e("WangJ", "自定义结果：" + imageUri.toString());
+                mUploadCallbackBelow.onReceiveValue(imageUri);
+            }
+        } else {
+            mUploadCallbackBelow.onReceiveValue(null);
+        }
+        mUploadCallbackBelow = null;
+    }
+
+    /**
+     * Android API >= 21(Android 5.0) 版本的回调处理
+     * @param resultCode 选取文件或拍照的返回码
+     * @param data 选取文件或拍照的返回结果
+     */
+    private void chooseAbove(int resultCode, Intent data) {
+        Log.e("WangJ", "返回调用方法--chooseAbove");
+
+        if (RESULT_OK == resultCode) {
+            updatePhotos();
+
+            if (data != null) {
+                // 这里是针对从文件中选图片的处理
+                Uri[] results;
+                Uri uriData = data.getData();
+                if (uriData != null) {
+                    results = new Uri[]{uriData};
+                    for (Uri uri : results) {
+                        addWatermarkToImage(uri);
+                        Log.e("WangJ", "系统返回URI：" + uri.toString());
+                    }
+
+                    mUploadCallbackAboveL.onReceiveValue(results);
+                } else {
+                    mUploadCallbackAboveL.onReceiveValue(null);
+                }
+            } else {
+                Log.e("WangJ", "自定义结果：" + imageUri.toString());
+                mUploadCallbackAboveL.onReceiveValue(new Uri[]{imageUri});
+            }
+        } else {
+            mUploadCallbackAboveL.onReceiveValue(null);
+        }
+        mUploadCallbackAboveL = null;
+    }
+
+    private void updatePhotos() {
+        // 该广播即使多发（即选取照片成功时也发送）也没有关系，只是唤醒系统刷新媒体文件
+        Intent intent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+        intent.setData(imageUri);
+        sendBroadcast(intent);
+    }
     /**
      * 处理WebView的回调
      *
@@ -617,6 +675,132 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     class MyClient extends WebViewClient {
     }
     class MyWebChromeClient extends WebChromeClient {
+        /**
+         * 8(Android 2.2) <= API <= 10(Android 2.3)回调此方法
+         */
+        private void openFileChooser(android.webkit.ValueCallback<Uri> uploadMsg) {
+            Log.e("WangJ", "运行方法 openFileChooser-1");
+            // (2)该方法回调时说明版本API < 21，此时将结果赋值给 mUploadCallbackBelow，使之 != null
+            mUploadCallbackBelow = uploadMsg;
+            takePhoto();
+        }
+
+        /**
+         * 11(Android 3.0) <= API <= 15(Android 4.0.3)回调此方法
+         */
+        public void openFileChooser(android.webkit.ValueCallback<Uri> uploadMsg, String acceptType) {
+            Log.e("WangJ", "运行方法 openFileChooser-2 (acceptType: " + acceptType + ")");
+            // 这里我们就不区分input的参数了，直接用拍照
+            openFileChooser(uploadMsg);
+        }
+
+        /**
+         * 16(Android 4.1.2) <= API <= 20(Android 4.4W.2)回调此方法
+         */
+        public void openFileChooser(android.webkit.ValueCallback<Uri> uploadMsg, String acceptType, String capture) {
+            Log.e("WangJ", "运行方法 openFileChooser-3 (acceptType: " + acceptType + "; capture: " + capture + ")");
+            // 这里我们就不区分input的参数了，直接用拍照
+            openFileChooser(uploadMsg);
+        }
+
+        /**
+         * API >= 21(Android 5.0.1)回调此方法
+         */
+        @Override
+        public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> valueCallback, FileChooserParams fileChooserParams) {
+            Log.e("WangJ", "运行方法 onShowFileChooser");
+            // (1)该方法回调时说明版本API >= 21，此时将结果赋值给 mUploadCallbackAboveL，使之 != null
+            mUploadCallbackAboveL  = valueCallback;
+            takePhoto();
+            return true;
+        }
+
+        /**
+         * 调用相机
+         */
+        private void takePhoto() {
+            // 指定拍照存储位置的方式调起相机
+            String filePath = Environment.getExternalStorageDirectory() + File.separator
+                    + Environment.DIRECTORY_DOWNLOADS + File.separator;
+            String fileName = "IMG_" + DateFormat.format("yyyyMMdd_hhmmss", Calendar.getInstance(Locale.CHINA)) + ".jpg";
+
+
+            if (Build.VERSION.SDK_INT >= 24) {
+                imageUri = FileProvider.getUriForFile(MainActivity.this, COM_WEIFU_IWMS_FILEPROVIDE ,new File(filePath + fileName));
+            }else {
+                imageUri = Uri.fromFile(new File(filePath + fileName));
+            }
+
+
+
+//        Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+//        intent.putExtra(MediaStore.EXTRA_OUTPUT, imageUri);
+//        startActivityForResult(intent, REQUEST_CODE);
+
+            // 选择图片（不包括相机拍照）,则不用成功后发刷新图库的广播
+//        Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+//        i.addCategory(Intent.CATEGORY_OPENABLE);
+//        i.setType("image/*");
+//        startActivityForResult(Intent.createChooser(i, "Image Chooser"), REQUEST_CODE);
+
+            Intent captureIntent = new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
+            captureIntent.putExtra(MediaStore.EXTRA_OUTPUT, imageUri);
+//
+//            Intent Photo = new Intent(Intent.ACTION_PICK,
+//                    android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+//
+//            Intent chooserIntent = Intent.createChooser(Photo, "Image Chooser");
+//            chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, new Parcelable[]{captureIntent});
+
+            startActivityForResult(captureIntent, PICK_REQUEST);
+        }
+
+    
+
+        // for 5.0+
+/*        public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+            if (mFilePathCallbackArray != null) {
+                mFilePathCallbackArray.onReceiveValue(null);
+            }
+            mFilePathCallbackArray = filePathCallback;
+            handleup(filePathCallback);
+            return true;
+        }*/
+
+//        private void handle(ValueCallback<Uri> uploadFile) {
+//            Intent intent = new Intent(Intent.ACTION_PICK);
+//            // 设置允许上传的文件类型
+//            intent.setType("*/*");
+//            startActivityForResult(intent, PICK_REQUEST);
+//        }
+
+/*        private void handleup(ValueCallback<Uri[]> uploadFile) {
+
+//            mFilePathCallbackArray = filePath;
+
+            Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+
+//  选择
+//            Intent contentSelectionIntent = new Intent(Intent.ACTION_GET_CONTENT);
+//            contentSelectionIntent.addCategory(Intent.CATEGORY_OPENABLE);
+//            contentSelectionIntent.setType("image/*");
+//
+//            Intent[] intentArray;
+//            if (takePictureIntent != null) {
+//                intentArray = new Intent[]{takePictureIntent};
+//            } else {
+//                intentArray = new Intent[0];
+//            }
+//
+//            Intent chooserIntent = new Intent(Intent.ACTION_CHOOSER);
+//            chooserIntent.putExtra(Intent.EXTRA_INTENT, contentSelectionIntent);
+//            chooserIntent.putExtra(Intent.EXTRA_TITLE, "Image Chooser");
+//            chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, intentArray);
+
+            startActivityForResult(takePictureIntent, PICK_REQUEST);
+
+        }*/
+
         // 监听网页进度 newProgress进度值在0-100
         @Override
         public void onProgressChanged(WebView view, int newProgress) {
@@ -632,6 +816,47 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
             progressBar.setProgress(newProgress);
             // 如果想展示加载动画，则增加一个drawable布局后，在onCreate时展示，在progress=100时View.GONE即可
         }
+    }
+
+    private void addWatermarkToImage(Uri imageUri) {
+        try {
+            Bitmap originalBitmap = MediaStore.Images.Media.getBitmap(this.getContentResolver(), imageUri);
+
+            // 添加文字水印
+            Bitmap watermarkedBitmap = addTextWatermark(originalBitmap, "Your Watermark Text");
+
+            // 保存带有水印的图片
+            saveWatermarkedImage(watermarkedBitmap, imageUri);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void saveWatermarkedImage(Bitmap bitmap, Uri destinationUri) {
+        try (OutputStream out = getContentResolver().openOutputStream(destinationUri)) {
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    private Bitmap addTextWatermark(Bitmap src, String watermarkText) {
+        Canvas canvas = new Canvas(src);
+        Paint paint = new Paint();
+        paint.setColor(Color.WHITE);
+        paint.setTextSize(30);
+        paint.setAlpha(128); // 设置透明度
+
+        Rect bounds = new Rect();
+        paint.getTextBounds(watermarkText, 0, watermarkText.length(), bounds);
+
+        int x = src.getWidth() - bounds.width() - 10;
+        int y = src.getHeight() - bounds.height() - 10;
+
+        canvas.drawText(watermarkText, x, y, paint);
+
+        return src;
     }
 
     private void requestPermissions() {
