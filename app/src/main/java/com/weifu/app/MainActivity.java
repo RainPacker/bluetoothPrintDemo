@@ -34,6 +34,7 @@ import android.os.StrictMode;
 import android.provider.MediaStore;
 import android.telephony.TelephonyManager;
 import android.text.format.DateFormat;
+import android.text.format.DateUtils;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -45,6 +46,8 @@ import android.webkit.DownloadListener;
 import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -79,8 +82,10 @@ import net.posprinter.posprinterface.IMyBinder;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
@@ -89,6 +94,7 @@ import java.util.Objects;
 public class MainActivity extends AppCompatActivity /**implements Scanner.DataListener, EMDKManager.EMDKListener**/ {
      private static final int REQUEST_OPEN = 0X01;
     private static final String COM_WEIFU_IWMS_FILEPROVIDE = "com.weifu.iwms.fileprovider";
+    private static final String WATERMARK_TEXT = "安全生产";
 
     private EMDKManager emdkManager = null;
     private BarcodeManager barcodeManager = null;
@@ -100,7 +106,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     String TAG = getClass().getSimpleName();
     // prod
 //    private static final String LOADRL ="http://10.204.10.28:31237" ;
-    private static final String LOADRL ="http://10.1.4.151" ;
+//    private static final String LOADRL ="http://10.204.10.28:31237" ;
+    private static final String LOADRL ="http://10.1.4.145" ;
 //    private static final String LOADRL ="file:///android_asset/test.html" ;
    // private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
@@ -138,13 +145,13 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-//        this.requestWindowFeature(Window.FEATURE_NO_TITLE);
-//        this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-//                WindowManager.LayoutParams.FLAG_FULLSCREEN);
-  //      this.makeStatusBarTransparent(this);
-     //   setFullscreen(true, true);
-       // setAndroidNativeLightStatusBar(this, true);
-        getWindow().setNavigationBarColor(Color.parseColor("#004098"));
+        this.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        this.makeStatusBarTransparent(this);
+        setFullscreen(true, true);
+        setAndroidNativeLightStatusBar(this, true);
+//        getWindow().setNavigationBarColor(Color.parseColor("#004098"));
         super.onCreate(savedInstanceState);
        // initReceiver();
      //   getPermission();
@@ -293,29 +300,30 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     //设置回退页面
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         Log.d(TAG, "canGoBack: "+webView.canGoBack());
+        if((keyCode == KeyEvent.KEYCODE_BACK) && ! webView.canGoBack()){
+
+            if ((System.currentTimeMillis() - exitTime) > 2000) {
+                Toast.makeText(getApplicationContext(), "再按一次退出程序", Toast.LENGTH_SHORT).show();
+                exitTime = System.currentTimeMillis();
+            } else {
+                new CustomDialog.Builder(this).setTitle("提示").setInfo("确定要退出吗？").setButtonCancel("取消", new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+
+                    }
+                }).setButtonConfirm("确定", new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        System.exit(0);
+                    }
+                }).create().show();
+            }
+        }
         if ((keyCode == KeyEvent.KEYCODE_BACK) && webView.canGoBack()) {
             webView.goBack();
             return true;
         }else {
-            if((keyCode == KeyEvent.KEYCODE_BACK) && ! webView.canGoBack()){
 
-                if ((System.currentTimeMillis() - exitTime) > 2000) {
-                    Toast.makeText(getApplicationContext(), "再按一次退出程序", Toast.LENGTH_SHORT).show();
-                    exitTime = System.currentTimeMillis();
-                } else {
-                    new CustomDialog.Builder(this).setTitle("提示").setInfo("确定要退出吗？").setButtonCancel("取消", new View.OnClickListener() {
-                        @Override
-                        public void onClick(View v) {
-
-                        }
-                    }).setButtonConfirm("确定", new View.OnClickListener() {
-                        @Override
-                        public void onClick(View v) {
-                            System.exit(0);
-                        }
-                    }).create().show();
-                }
-            }
 
 
 
@@ -340,6 +348,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     }
 
 
+    @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
@@ -428,6 +437,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
                 }
             } else {
                 Log.e("WangJ", "自定义结果：" + imageUri.toString());
+                addWatermarkToImage(imageUri);
                 mUploadCallbackAboveL.onReceiveValue(new Uri[]{imageUri});
             }
         } else {
@@ -673,6 +683,42 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         return this.mClient;
    }
     class MyClient extends WebViewClient {
+        @Override
+        public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+            // 显示自定义错误页面
+            webView.loadUrl("file:///android_asset/404.html");
+            CustomDialog.Builder	 builder = new CustomDialog.Builder(MainActivity.this);
+            builder.setTitle("提示");
+            builder.setWarning("网络出现错误，请检查网络或联系管理员");
+            builder.setButtonConfirm("确定", new View.OnClickListener() {
+
+                @Override
+                public void onClick(View customDgv) {
+                    System.exit(0);
+                }
+            });
+            CustomDialog customDg =	builder.create();
+            customDg.show();
+
+        }
+
+        @Override
+        public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse errorResponse) {
+            // 显示自定义错误页面
+//            webView.loadUrl("file:///android_asset/404.html");
+//            CustomDialog.Builder	 builder = new CustomDialog.Builder(MainActivity.this);
+//            builder.setTitle("提示");
+//            builder.setWarning("网络出现错误，请检查网络或联系管理员");
+//            builder.setButtonConfirm("确定", new View.OnClickListener() {
+//
+//                @Override
+//                public void onClick(View customDgv) {
+//                    System.exit(0);
+//                }
+//            });
+//            CustomDialog customDg =	builder.create();
+//            customDg.show();
+        }
     }
     class MyWebChromeClient extends WebChromeClient {
         /**
@@ -820,10 +866,22 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
     private void addWatermarkToImage(Uri imageUri) {
         try {
+
             Bitmap originalBitmap = MediaStore.Images.Media.getBitmap(this.getContentResolver(), imageUri);
+            originalBitmap = originalBitmap.copy(Bitmap.Config.ARGB_8888, true);
+            long currentTimeMillis = System.currentTimeMillis();
+
+            // 创建一个SimpleDateFormat实例，并设置日期/时间格式
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+
+            // 根据当前时间毫秒值创建Date对象
+            Date currentDate = new Date(currentTimeMillis);
+
+            // 将Date对象格式化为字符串
+            String formattedTime = sdf.format(currentDate);
 
             // 添加文字水印
-            Bitmap watermarkedBitmap = addTextWatermark(originalBitmap, "Your Watermark Text");
+            Bitmap watermarkedBitmap = addTextWatermark(originalBitmap, WATERMARK_TEXT+formattedTime);
 
             // 保存带有水印的图片
             saveWatermarkedImage(watermarkedBitmap, imageUri);
@@ -844,15 +902,15 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private Bitmap addTextWatermark(Bitmap src, String watermarkText) {
         Canvas canvas = new Canvas(src);
         Paint paint = new Paint();
-        paint.setColor(Color.WHITE);
-        paint.setTextSize(30);
+        paint.setColor(Color.BLUE);
+        paint.setTextSize(100);
         paint.setAlpha(128); // 设置透明度
 
         Rect bounds = new Rect();
         paint.getTextBounds(watermarkText, 0, watermarkText.length(), bounds);
 
-        int x = src.getWidth() - bounds.width() - 10;
-        int y = src.getHeight() - bounds.height() - 10;
+        int x = src.getWidth() - bounds.width() - 20;
+        int y = src.getHeight() - bounds.height() - 20;
 
         canvas.drawText(watermarkText, x, y, paint);
 
