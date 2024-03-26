@@ -6,6 +6,10 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DownloadManager;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
@@ -55,6 +59,7 @@ import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.NotificationCompat;
 import androidx.core.content.FileProvider;
 
 
@@ -90,11 +95,13 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Random;
 
 public class MainActivity extends AppCompatActivity /**implements Scanner.DataListener, EMDKManager.EMDKListener**/ {
      private static final int REQUEST_OPEN = 0X01;
     private static final String COM_WEIFU_IWMS_FILEPROVIDE = "com.weifu.iwms.fileprovider";
     private static final String WATERMARK_TEXT = "安全生产";
+    private static final String CHANNEL_ID ="wps" ;
 
     private EMDKManager emdkManager = null;
     private BarcodeManager barcodeManager = null;
@@ -106,10 +113,10 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     String TAG = getClass().getSimpleName();
     // prod
 //    private static final String LOADRL ="http://10.204.10.28:31237" ;
-//    private static final String LOADRL ="http://10.204.10.28:31237" ;
-    private static final String LOADRL ="http://10.1.4.145" ;
+    private static final String LOADRL ="http://10.204.10.28:31237" ;
+//    private static final String LOADRL ="http://10.1.4.145" ;
 //    private static final String LOADRL ="file:///android_asset/test.html" ;
-   // private static final String LOADRL ="http://10.94.31.150:31223/" ;
+//    private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10011;
     ValueCallback<Uri> mFilePathCallback;
@@ -174,7 +181,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         //WebView加载页面
         webView = findViewById(R.id.web_view);
         webView.getSettings().setJavaScriptEnabled(true);
-        webView.setWebViewClient(new WebViewClient());
+
 
         WindowManager windowManager = (WindowManager) this.getSystemService(Context.WINDOW_SERVICE);
         DisplayMetrics displayMetrics = new DisplayMetrics();
@@ -238,18 +245,6 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         });
 
         //该方法解决的问题是打开浏览器不调用系统浏览器，直接用 webView 打开
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                // 解决webview cangoBack() 失效的问题
-                if (Build.VERSION.SDK_INT < 26) {
-                    view.loadUrl(url);
-                    return true;
-                }
-
-                return false;
-            }
-        });
         jsBridge = new JsBridge(this);
         // 注册配置文件 斑马专用
         jsBridge.createProfile();
@@ -370,7 +365,12 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
                     String content = data.getStringExtra(Constant.CODED_CONTENT);
                     Log.i(TAG, "onActivityResult:扫码内容："+content);
                     String method = "javascript:qrResult('" + content + "')";
-                    webView.loadUrl(method);
+                    // 这里可能 出现乱码
+                 //   webView.loadUrl(method);
+                    webView.evaluateJavascript(method,null);
+                    String id = "wps";
+                    String name = "wpsChann";
+                   this.sendClickableNotification(this,new Intent(this,MainActivity.class),content);
                 }
 
             }
@@ -686,8 +686,10 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         @Override
         public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
             // 显示自定义错误页面
+            webView.clearHistory();
             webView.loadUrl("file:///android_asset/404.html");
-            CustomDialog.Builder	 builder = new CustomDialog.Builder(MainActivity.this);
+            webView.clearHistory();
+         /*   CustomDialog.Builder	 builder = new CustomDialog.Builder(MainActivity.this);
             builder.setTitle("提示");
             builder.setWarning("网络出现错误，请检查网络或联系管理员");
             builder.setButtonConfirm("确定", new View.OnClickListener() {
@@ -698,8 +700,18 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
                 }
             });
             CustomDialog customDg =	builder.create();
-            customDg.show();
+            customDg.show();*/
 
+        }
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView view, String url) {
+            // 解决webview cangoBack() 失效的问题
+            if (Build.VERSION.SDK_INT < 26) {
+                view.loadUrl(url);
+                return true;
+            }
+
+            return false;
         }
 
         @Override
@@ -1031,7 +1043,43 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     }
 
 
+    public void sendClickableNotification(Context context, Intent intent,String content) {
+        // 创建通知渠道 (对于Android Oreo及以上版本)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "My Notifications", NotificationManager.IMPORTANCE_DEFAULT);
+            channel.setDescription("Description of my notifications");
+            channel.enableLights(true);
+            channel.setLightColor(Color.BLUE);
+            channel.enableVibration(true);
+            NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            notificationManager.createNotificationChannel(channel);
+        }
 
+        // 创建意图 PendingIntent，用于点击通知后启动目标Activity
+        PendingIntent contentIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
 
+        // 创建通知构建器
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.logo) // 设置小图标
+                .setContentTitle("安全生产") // 设置通知标题
+                .setContentText(content) // 设置通知内容
+                .setAutoCancel(false)
+                .setGroup("wps")
+                .setChannelId(CHANNEL_ID)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT) // 设置优先级
+                .setContentIntent(contentIntent); // 设置点击后的意图
 
+        // 获取通知管理器实例
+        NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+
+        // 发送通知
+        int notificationId = new Random().nextInt(); // 可以自定义通知ID
+        Log.d(TAG, "sendClickableNotification: "+notificationId);
+        manager.notify(notificationId, builder.build());
+    }
 }
+
+
+
+
+
