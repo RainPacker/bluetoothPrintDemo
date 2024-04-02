@@ -72,15 +72,15 @@ public class SplashActivity extends AppCompatActivity {
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
         Objects.requireNonNull(getSupportActionBar()).hide();
         setContentView(R.layout.act_spread_layout);
-        // 获取ImageView
+   /*     // 获取ImageView
         ImageView loadingLogo = findViewById(R.id.imageView2);
 
         // 获取图片的实际宽度
         final Drawable drawable = loadingLogo.getDrawable();
-        final int targetWidth = drawable.getIntrinsicWidth();
+        final int targetWidth = drawable.getIntrinsicWidth();*/
 
 // 创建属性动画
-        ValueAnimator animator = ValueAnimator.ofInt(0, targetWidth);
+  /*      ValueAnimator animator = ValueAnimator.ofInt(0, targetWidth);
         animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override
             public void onAnimationUpdate(ValueAnimator animation) {
@@ -90,11 +90,11 @@ public class SplashActivity extends AppCompatActivity {
                 layoutParams.width = currentValue;
                 loadingLogo.setLayoutParams(layoutParams);
             }
-        });
+        });*/
 
 // 设置动画的时长和其他属性
-        animator.setDuration(1000);
-        animator.setInterpolator(new LinearInterpolator()); // 线性插值器，也可以换成其他你喜欢的插值器
+      /*  animator.setDuration(1000);
+        animator.setInterpolator(new LinearInterpolator())*/; // 线性插值器，也可以换成其他你喜欢的插值器
 
 // 开始动画
      //   animator.start();

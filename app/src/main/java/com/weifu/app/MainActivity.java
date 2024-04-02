@@ -521,64 +521,9 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     @Override
     protected void onResume() {
         super.onResume();
-        // The application is in foreground
-//        if (emdkManager != null) {
-//            // Acquire the barcode manager resources
-//            initBarcodeManager();
-//            // Enumerate scanner devices
-//            enumerateScannerDevices();
-//            // Initialize scanner
-//            initScanner();
-//        }
+
     }
 
-/*    private void initScanner() {
-        if (scanner == null) {
-            if ((deviceList != null) && (deviceList.size() != 0)) {
-                if (barcodeManager != null)
-                    scanner = barcodeManager.getDevice(deviceList.get(scannerIndex));
-            }
-            else {
-                Log.d(TAG, "Failed to get the specified scanner device! Please close and restart the application.");
-                return;
-            }
-            if (scanner != null) {
-                scanner.addDataListener(this);
-              //  scanner.addStatusListener(this);
-                try {
-                    scanner.enable();
-                } catch (ScannerException e) {
-
-                    deInitScanner();
-                }
-            }else{
-                Log.d(TAG,"Failed to initialize the scanner device.");
-            }
-        }
-    }*/
-/*    private void deInitScanner() {
-        if (scanner != null) {
-            try{
-                scanner.disable();
-            } catch (Exception e) {
-                Log.d(TAG,e.getMessage());
-            }
-
-            try {
-                scanner.removeDataListener(this);
-              //  scanner.removeStatusListener(this);
-            } catch (Exception e) {
-                Log.d(TAG,e.getMessage());
-            }
-
-            try{
-                scanner.release();
-            } catch (Exception e) {
-                Log.d(TAG,e.getMessage());
-            }
-            scanner = null;
-        }
-    }*/
 
     private void enumerateScannerDevices() {
         if (barcodeManager != null) {
