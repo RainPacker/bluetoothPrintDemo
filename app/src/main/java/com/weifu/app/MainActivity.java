@@ -112,8 +112,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
     String TAG = getClass().getSimpleName();
     // prod
-//    private static final String LOADRL ="http://10.1.4.9:81/" ;
-    private static final String LOADRL ="http://10.204.10.28:31237" ;
+    private static final String LOADRL ="http://10.1.4.137:80/" ;
+//    private static final String LOADRL ="http://10.204.10.28:31237" ;
 //    private static final String LOADRL ="http://10.1.4.145" ;
 //    private static final String LOADRL ="file:///android_asset/test.html" ;
 //    private static final String LOADRL ="http://10.94.31.150:31223/" ;
@@ -370,7 +370,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
                     webView.evaluateJavascript(method,null);
                     String id = "wps";
                     String name = "wpsChann";
-                   this.sendClickableNotification(this,new Intent(this,MainActivity.class),content);
+                //   this.sendClickableNotification(this,new Intent(this,MainActivity.class),content);
                 }
 
             }
@@ -723,13 +723,13 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
          */
         private void takePhoto() {
             // 指定拍照存储位置的方式调起相机
-            String filePath = Environment.getExternalStorageDirectory() + File.separator
-                    + Environment.DIRECTORY_DOWNLOADS + File.separator;
+            String filePath =
+                     Environment.DIRECTORY_DOWNLOADS;
             String fileName = "IMG_" + DateFormat.format("yyyyMMdd_hhmmss", Calendar.getInstance(Locale.CHINA)) + ".jpg";
 
 
             if (Build.VERSION.SDK_INT >= 24) {
-                imageUri = FileProvider.getUriForFile(MainActivity.this, COM_WEIFU_IWMS_FILEPROVIDE ,new File(filePath + fileName));
+                imageUri = FileProvider.getUriForFile(MainActivity.this, COM_WEIFU_IWMS_FILEPROVIDE ,new File(getExternalFilesDir(filePath),fileName));
             }else {
                 imageUri = Uri.fromFile(new File(filePath + fileName));
             }

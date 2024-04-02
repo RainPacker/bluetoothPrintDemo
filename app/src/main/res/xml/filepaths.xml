@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <path>
-        <root-path name="files_apk"
-            path="/"/>
-    </path>
+    <!-- 内部存储根目录下的files目录 -->
+    <external-files-path name="ehs" path="."/>
+
+    <!-- 或者指定内部缓存目录 -->
+    <cache-path name="cache_images" path="."/>
+
+    <!-- 或者外部公共目录 -->
+    <external-path name="external_storage_root" path="." />
 </paths>
