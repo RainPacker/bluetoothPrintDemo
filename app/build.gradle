@@ -3,12 +3,11 @@ plugins {
 }
 
 android {
-    compileSdkVersion 30
-
+    compileSdk 33
     defaultConfig {
         applicationId "com.weifu.iwms"
         minSdkVersion 21
-        targetSdkVersion 30
+        targetSdkVersion 33
         versionCode 4
         versionName "1.0.4"
 
