@@ -5,6 +5,7 @@ import static android.content.Context.NOTIFICATION_SERVICE;
 import static com.inuker.bluetooth.library.Code.REQUEST_SUCCESS;
 
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -17,6 +18,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -36,7 +38,9 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
+import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 
 import com.google.gson.Gson;
 import com.inuker.bluetooth.library.BluetoothClient;
@@ -83,6 +87,7 @@ import java.util.stream.Collectors;
 public class JsBridge extends BroadcastReceiver {
     public static final int SCAN_QR_REQUEST_CODE = 10001 ;
     private static final String CHANNEL_ID = "2" ;
+    private static final int NOTICE_PERMISSION_REQUEST_CODE = 3 ;
     String TAG = getClass().getSimpleName();
     private MainActivity activity;
     private ProgressDialog progressDialog;
@@ -1055,6 +1060,7 @@ private  static  class PrintWorkHandler extends Handler {
      * @param content
      */
     public void sendClickableNotification(Context context, Intent intent,String content) {
+        requestNotificationPermission();
         // 创建通知渠道 (对于Android Oreo及以上版本)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "My Notifications", NotificationManager.IMPORTANCE_DEFAULT);
@@ -1087,6 +1093,35 @@ private  static  class PrintWorkHandler extends Handler {
         int notificationId = new Random().nextInt(); // 可以自定义通知ID
         Log.d(TAG, "sendClickableNotification: "+notificationId);
         manager.notify(notificationId, builder.build());
+    }
+
+    /**
+     * 动态申请 通知权限
+     */
+    public void requestNotificationPermission() {
+        // Java代码动态申请POST_NOTIFICATIONS权限
+        if (Build.VERSION.SDK_INT >= 33) {
+            int checkPermission =
+                    ContextCompat.checkSelfPermission(this.activity, Manifest.permission.POST_NOTIFICATIONS);
+            if (checkPermission != PackageManager.PERMISSION_GRANTED) {
+                //动态申请
+                ActivityCompat.requestPermissions(this.activity, new String[]{
+                        Manifest.permission.POST_NOTIFICATIONS},NOTICE_PERMISSION_REQUEST_CODE);
+            } else {
+                Log.d(TAG, "requestNotificationPermission: 已经授权");
+            }
+        } else {
+            int checkPermission =
+                    ContextCompat.checkSelfPermission(this.activity, Manifest.permission.ACCESS_NOTIFICATION_POLICY);
+            if (checkPermission != PackageManager.PERMISSION_GRANTED) {
+                //动态申请
+                ActivityCompat.requestPermissions(this.activity, new String[]{
+                        Manifest.permission.ACCESS_NOTIFICATION_POLICY},NOTICE_PERMISSION_REQUEST_CODE);
+            } else {
+                Log.d(TAG, "requestNotificationPermission: 已经授权");
+            }
+        }
+
     }
 
 

@@ -59,7 +59,9 @@ import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
 
@@ -102,6 +104,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private static final String COM_WEIFU_IWMS_FILEPROVIDE = "com.weifu.iwms.fileprovider";
     private static final String WATERMARK_TEXT = "安全生产";
     private static final String CHANNEL_ID ="wps" ;
+    private static final int NOTICE_PERMISSION_REQUEST_CODE = 3 ;
 
     private EMDKManager emdkManager = null;
     private BarcodeManager barcodeManager = null;
@@ -112,8 +115,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
     String TAG = getClass().getSimpleName();
     // prod
-    private static final String LOADRL ="http://10.1.4.137:80/" ;
-//    private static final String LOADRL ="http://10.204.10.28:31237" ;
+//    private static final String LOADRL ="http://10.1.4.137:80/" ;
+    private static final String LOADRL ="http://10.204.10.28:31237" ;
 //    private static final String LOADRL ="http://10.1.4.145" ;
 //    private static final String LOADRL ="file:///android_asset/test.html" ;
 //    private static final String LOADRL ="http://10.94.31.150:31223/" ;
@@ -285,7 +288,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         webView.getSettings().getAllowFileAccessFromFileURLs();
         // 禁用缓存
         webView.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
-        webView.getSettings().setAppCacheEnabled(false);
+//        webView.getSettings().setAppCacheEnabled(false);
        // webView.setOnKeyListener((view, keyCode,  event)-> this.onKeyDown(keyCode,event));
         updateApk();
 //        showInfoDialog("","xxx","取消",null,"ok",null);
@@ -1022,6 +1025,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         Log.d(TAG, "sendClickableNotification: "+notificationId);
         manager.notify(notificationId, builder.build());
     }
+
+
 }
 
 

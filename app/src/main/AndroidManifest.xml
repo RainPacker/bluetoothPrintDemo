@@ -4,6 +4,8 @@
     package="com.weifu.app">
     <uses-permission android:name="android.permission.BLUETOOTH"/>
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -32,7 +34,7 @@
         android:usesCleartextTraffic="true"
         tools:targetApi="m">
         <uses-library android:name="com.symbol.emdk" android:required="false"/>
-        <activity android:name=".SplashActivity"  >
+        <activity android:name=".SplashActivity"  android:exported="true"  >
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
