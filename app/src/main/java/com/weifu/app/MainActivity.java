@@ -80,6 +80,7 @@ import com.symbol.emdk.barcode.StatusData;
 import com.weifu.action.PermissionsResultAction;
 import com.weifu.app.js.JsBridge;
 import com.weifu.app.ui.custom.CustomDialog;
+import com.weifu.app.ui.home.AndroidBug5497Workaround;
 import com.weifu.app.version.UpdateManager;
 import com.weifu.utils.PermissionsManager;
 import com.yzq.zxinglibrary.common.Constant;
@@ -163,6 +164,12 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         setAndroidNativeLightStatusBar(this, true);
 //        getWindow().setNavigationBarColor(Color.parseColor("#004098"));
         super.onCreate(savedInstanceState);
+        new Thread(()->{
+            Looper.prepare();
+            updateApk();
+            Looper.loop();
+        }).start();
+
        // initReceiver();
      //   getPermission();
         requestPermissions();
@@ -290,8 +297,9 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         webView.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
 //        webView.getSettings().setAppCacheEnabled(false);
        // webView.setOnKeyListener((view, keyCode,  event)-> this.onKeyDown(keyCode,event));
-        updateApk();
+//        updateApk();
 //        showInfoDialog("","xxx","取消",null,"ok",null);
+        AndroidBug5497Workaround.assistActivity(this);
     }
 
     @Override

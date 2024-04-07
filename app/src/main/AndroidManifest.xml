@@ -41,7 +41,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".MainActivity"  android:windowSoftInputMode="adjustResize|stateVisible" ></activity>
+        <activity android:name=".MainActivity"  android:windowSoftInputMode="adjustPan"  ></activity>
         <activity android:name=".ui.custom.MyScan"
             android:theme="@style/Theme.AppCompat.NoActionBar"></activity>
         <provider
