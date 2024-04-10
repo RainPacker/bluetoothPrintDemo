@@ -6,6 +6,7 @@ import static com.inuker.bluetooth.library.Code.REQUEST_SUCCESS;
 
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -159,6 +160,7 @@ public class JsBridge extends BroadcastReceiver {
     }
 
     @JavascriptInterface
+    @SuppressLint("MissingPermission")
     public String getPairedDevice() {
         if(!BluetoothUtil.isBluetoothOn()){
             showToast("请打开蓝牙");
