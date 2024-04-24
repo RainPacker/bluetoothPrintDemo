@@ -156,7 +156,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
        // initReceiver();
      //   getPermission();
         requestPermissions();
-//        createClient();
+        createClient();
 //        try {
 //            EMDKResults results = EMDKManager.getEMDKManager(MainActivity.this, this);
 //            if (results.statusCode != EMDKResults.STATUS_CODE.SUCCESS) {
