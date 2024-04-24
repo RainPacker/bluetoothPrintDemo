@@ -99,8 +99,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
     String TAG = getClass().getSimpleName();
     // prod
-    private static final String LOADRL ="http://10.1.4.141:81/" ;
-//    private static final String LOADRL ="http://121.225.97.57:18443/" ;
+//    private static final String LOADRL ="http://10.1.4.141:81/" ;
+    private static final String LOADRL ="http://121.225.97.57:18443/" ;
 //    private static final String LOADRL ="http://10.1.4.145" ;
 //    private static final String LOADRL ="file:///android_asset/test.html" ;
 //    private static final String LOADRL ="http://10.94.31.150:31223/" ;
@@ -136,7 +136,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         return scanner;
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
+    @SuppressLint({"SetJavaScriptEnabled", "UnspecifiedRegisterReceiverFlag"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         this.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -156,7 +156,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
        // initReceiver();
      //   getPermission();
         requestPermissions();
-        createClient();
+//        createClient();
 //        try {
 //            EMDKResults results = EMDKManager.getEMDKManager(MainActivity.this, this);
 //            if (results.statusCode != EMDKResults.STATUS_CODE.SUCCESS) {
@@ -248,7 +248,11 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         actionFilters.addAction(Intent.ACTION_SCREEN_ON);
         actionFilters.addAction( BluetoothAdapter.ACTION_STATE_CHANGED);
         actionFilters.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
-        registerReceiver(jsBridge,actionFilters);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            registerReceiver(jsBridge,actionFilters, Context.RECEIVER_EXPORTED);
+        }else {
+            registerReceiver(jsBridge,actionFilters);
+        }
 
         webView.addJavascriptInterface(jsBridge, "JsBridge");
 
