@@ -10,7 +10,7 @@
 
     <ImageView
         android:id="@+id/imageView2"
-        android:layout_width="250dp"
+        android:layout_width="150dp"
         android:layout_height="100dp"
         android:layout_gravity="center"
         android:contentDescription="wms"

@@ -25,6 +25,7 @@
         android:roundIcon="@drawable/logo_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Hyoa"
+        android:hardwareAccelerated="true"
         android:usesCleartextTraffic="true"
         tools:targetApi="m">
         <uses-library android:name="com.symbol.emdk" android:required="false"/>
