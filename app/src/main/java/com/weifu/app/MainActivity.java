@@ -87,7 +87,7 @@ import java.util.Random;
 
 public class MainActivity extends AppCompatActivity /**implements Scanner.DataListener, EMDKManager.EMDKListener**/ {
      private static final int REQUEST_OPEN = 0X01;
-    private static final String COM_WEIFU_IWMS_FILEPROVIDE = "com.weifu.iwms.fileprovider";
+    private static final String COM_WEIFU_IWMS_FILEPROVIDE = "com.weifu.tms.fileprovider";
     private static final String WATERMARK_TEXT = "安全生产";
     private static final String CHANNEL_ID ="wps" ;
     private static final int NOTICE_PERMISSION_REQUEST_CODE = 3 ;

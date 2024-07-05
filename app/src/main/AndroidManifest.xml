@@ -40,7 +40,7 @@
         <activity android:name=".ui.custom.MyScan"
             android:theme="@style/Theme.AppCompat.NoActionBar"></activity>
         <provider
-            android:authorities="com.weifu.iwms.fileprovider"
+            android:authorities="com.weifu.tms.fileprovider"
             android:name="androidx.core.content.FileProvider"
             android:grantUriPermissions="true"
             android:screenOrientation="fullSensor"

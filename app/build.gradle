@@ -6,7 +6,7 @@ android {
     compileSdk 34
     namespace "com.weifu.app"
     defaultConfig {
-        applicationId "com.weifu.iwms"
+        applicationId "com.weifu.tms"
         minSdkVersion 21
         //noinspection OldTargetApi
         targetSdkVersion 33
