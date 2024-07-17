@@ -61,6 +61,7 @@ import com.weifu.action.PermissionsResultAction;
 import com.weifu.app.js.JsBridge;
 import com.weifu.app.version.UpdateManager;
 import com.weifu.utils.PermissionsManager;
+import com.xuexiang.xui.XUI;
 
 import net.posprinter.posprinterface.IMyBinder;
 
@@ -115,6 +116,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+     //   XUI.initTheme(this);
 //        this.requestWindowFeature(Window.FEATURE_NO_TITLE);
 //        this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
 //                WindowManager.LayoutParams.FLAG_FULLSCREEN);

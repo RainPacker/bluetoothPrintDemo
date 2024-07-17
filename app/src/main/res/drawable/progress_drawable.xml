@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- res/drawable/progress_drawable.xml -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 背景颜色或图案 -->
+    <item android:id="@android:id/background">
+        <shape>
+            <solid android:color="#FFFFFF" /> <!-- 透明黑色 -->
+        </shape>
+    </item>
+
+    <!-- Logo图片作为前景 -->
+    <item android:id="@android:id/secondaryProgress">
+        <bitmap
+            android:src="@drawable/logo_00b09c96"
+            android:gravity="center"/>
+    </item>
+
+    <!-- 动画部分 -->
+    <item android:id="@android:id/progress">
+        <clip>
+            <bitmap
+                android:src="@drawable/logo_00b09c96"
+                android:gravity="center"/>
+        </clip>
+    </item>
+</layer-list>
