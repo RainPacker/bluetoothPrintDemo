@@ -294,11 +294,11 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 //        updateApk();
 //        showInfoDialog("","xxx","取消",null,"ok",null);
         AndroidBug5497Workaround.assistActivity(this);
-        float navigationBarHeight = getNavigationBarHeight();
-
-        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        layoutParams.bottomMargin=(int)getNavigationBarHeight();
-        webView.setLayoutParams(layoutParams);
+//        float navigationBarHeight = getNavigationBarHeight();
+//
+//        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+//        layoutParams.bottomMargin=(int)getNavigationBarHeight();
+//        webView.setLayoutParams(layoutParams);
 
     }
 
