@@ -36,9 +36,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".MainActivity"  android:windowSoftInputMode="adjustPan"  ></activity>
-        <activity android:name=".ui.custom.MyScan"
-            android:theme="@style/Theme.AppCompat.NoActionBar"></activity>
+        <activity
+            android:name=".MainActivity"
+            android:windowSoftInputMode="adjustPan" />
+        <activity
+            android:name=".ui.custom.MyScan"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
         <provider
             android:authorities="com.weifu.iwms.fileprovider"
             android:name="androidx.core.content.FileProvider"
