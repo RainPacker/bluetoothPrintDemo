@@ -14,9 +14,11 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Color;
+import android.hardware.biometrics.BiometricPrompt;
 import android.net.Uri;
 import android.os.Build;
 //import android.support.v7.app.AppCompatActivity;
@@ -26,6 +28,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.StrictMode;
 import android.provider.MediaStore;
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyProperties;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
@@ -49,28 +53,23 @@ import com.inuker.bluetooth.library.BluetoothClient;
 import com.mingle.widget.LoadingView;
 import com.mingle.widget.ShapeLoadingDialog;
 import com.symbol.emdk.EMDKManager;
-import com.symbol.emdk.EMDKResults;
 import com.symbol.emdk.barcode.BarcodeManager;
-import com.symbol.emdk.barcode.ScanDataCollection;
 import com.symbol.emdk.barcode.Scanner;
-import com.symbol.emdk.barcode.ScannerException;
 import com.symbol.emdk.barcode.ScannerInfo;
-import com.symbol.emdk.barcode.ScannerResults;
-import com.symbol.emdk.barcode.StatusData;
 import com.weifu.action.PermissionsResultAction;
 import com.weifu.app.js.JsBridge;
 import com.weifu.app.version.UpdateManager;
 import com.weifu.utils.PermissionsManager;
-import com.xuexiang.xui.XUI;
 
 import net.posprinter.posprinterface.IMyBinder;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Iterator;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.KeyPairGenerator;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.Executor;
 
 public class MainActivity extends AppCompatActivity /**implements Scanner.DataListener, EMDKManager.EMDKListener**/ {
      private static final int REQUEST_OPEN = 0X01;
@@ -84,7 +83,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
     String TAG = getClass().getSimpleName();
     // prod
-    private static final String LOADRL ="http://10.1.50.130:30325/" ;
+    private static final String LOADRL ="http://10.1.4.138:9001/" ;
    // private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10001;
@@ -99,6 +98,12 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private JsBridge jsBridge;
 
     private long exitTime;
+
+
+    // 在 Activity 或 Fragment 中初始化
+    private BiometricPrompt biometricPrompt;
+    private BiometricPrompt.AuthenticationCallback callback;
+    private KeyPairGenerator keyPairGenerator;
 
 
     public final IMyBinder getPrinterBinder() {
@@ -275,6 +280,14 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         webView.getSettings().getAllowFileAccessFromFileURLs();
        // webView.setOnKeyListener((view, keyCode,  event)-> this.onKeyDown(keyCode,event));
         updateApk();
+        try {
+            PackageManager pm = this.getPackageManager();
+            PackageInfo info = pm.getPackageInfo("com.android.webview", 0);
+            Log.d(TAG, "onCreate:webview version: "+info.versionName);
+        } catch (PackageManager.NameNotFoundException e) {
+            Log.e("WebViewVersionFetcher", "Package not found: " + e.getMessage());
+        }
+
     }
 
     @Override
@@ -699,6 +712,55 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     }
 
 
+//    public initBiometric() throws Exception {
+//        // 初始化组件
+//        Executor executor = new MainThreadExecutor();
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+//            callback = new BiometricPrompt.AuthenticationCallback() {
+//                @Override
+//                public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
+//                    super.onAuthenticationSucceeded(result);
+//                    // 认证成功后的操作
+//                }
+//
+//                @Override
+//                public void onAuthenticationError(int errorCode, CharSequence errString) {
+//                    super.onAuthenticationError(errorCode, errString);
+//                    // 认证失败或错误
+//                }
+//
+//                @Override
+//                public void onAuthenticationFailed() {
+//                    super.onAuthenticationFailed();
+//                    // 认证失败
+//                }
+//            };
+//        }
+//
+//        // 创建 BiometricPrompt 对象
+//        biometricPrompt = new BiometricPrompt(this, executor, callback);
+//
+//        // 创建密钥对
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+//            keyPairGenerator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
+//            KeyGenParameterSpec spec = new KeyGenParameterSpec.Builder("myKey", KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+//                    .setBlockModes(KeyProperties.BLOCK_MODE_CBC)
+//                    .setUserAuthenticationRequired(true)
+//                    .build();
+//            keyPairGenerator.initialize(spec);
+//        }
+//
+//        // 启动指纹认证
+//        promptForBiometric();
+//    }
+//    private void promptForBiometric() {
+//        BiometricPrompt  promptInfo = new BiometricPrompt.Builder()
+//                .setTitle("Biometric login for my app")
+//                .setNegativeButtonText("Cancel")
+//                .build();
+//
+//        biometricPrompt.authenticate(promptInfo);
+//    }
 
 
 }
