@@ -36,6 +36,7 @@ import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
@@ -48,6 +49,7 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
@@ -101,7 +103,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     // prod
 //    private static final String LOADRL ="http://10.1.4.141:81/" ;
 //    private static final String LOADRL ="http://121.225.97.57:18443/" ;
-    private static final String LOADRL ="http://221.229.106.229:8000/pad/" ;
+    private static final String LOADRL ="http://10.1.50.130:32553/" ;
 //    private static final String LOADRL ="http://10.1.4.145" ;
 //    private static final String LOADRL ="file:///android_asset/test.html" ;
 //    private static final String LOADRL ="http://10.94.31.150:31223/" ;
@@ -153,6 +155,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
             updateApk();
             Looper.loop();
         }).start();
+
 
        // initReceiver();
      //   getPermission();
@@ -283,11 +286,20 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         webView.getSettings().getAllowFileAccessFromFileURLs();
         // 禁用缓存
         webView.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
+        String userAgentString = webView.getSettings().getUserAgentString();
+                Log.d("userAgent",userAgentString);
+
 //        webView.getSettings().setAppCacheEnabled(false);
        // webView.setOnKeyListener((view, keyCode,  event)-> this.onKeyDown(keyCode,event));
 //        updateApk();
 //        showInfoDialog("","xxx","取消",null,"ok",null);
         AndroidBug5497Workaround.assistActivity(this);
+        float navigationBarHeight = getNavigationBarHeight();
+
+        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        layoutParams.bottomMargin=(int)getNavigationBarHeight();
+        webView.setLayoutParams(layoutParams);
+
     }
 
     @Override
@@ -1020,6 +1032,16 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         int notificationId = new Random().nextInt(); // 可以自定义通知ID
         Log.d(TAG, "sendClickableNotification: "+notificationId);
         manager.notify(notificationId, builder.build());
+    }
+
+    public float getNavigationBarHeight() {
+        float result = 0;
+        int resourceId = getResources().
+                getIdentifier("navigation_bar_height", "dimen", "android");
+        if (resourceId > 0) {
+            result = getResources().getDimension(resourceId);
+        }
+        return result;
     }
 
 

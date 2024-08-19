@@ -12,11 +12,8 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
     <uses-permission android:name="com.symbol.emdk.permission.EMDK"/>
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32"
-        tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
@@ -28,6 +25,7 @@
         android:roundIcon="@drawable/logo_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Hyoa"
+        android:hardwareAccelerated="true"
         android:usesCleartextTraffic="true"
         tools:targetApi="m">
         <uses-library android:name="com.symbol.emdk" android:required="false"/>
@@ -38,9 +36,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".MainActivity"  android:windowSoftInputMode="adjustPan"  ></activity>
-        <activity android:name=".ui.custom.MyScan"
-            android:theme="@style/Theme.AppCompat.NoActionBar"></activity>
+        <activity
+            android:name=".MainActivity"
+            android:windowSoftInputMode="adjustPan" />
+        <activity
+            android:name=".ui.custom.MyScan"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
         <provider
             android:authorities="com.weifu.iwms.fileprovider"
             android:name="androidx.core.content.FileProvider"
