@@ -30,6 +30,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.StrictMode;
 import android.provider.MediaStore;
+import android.renderscript.RenderScript;
 import android.telephony.TelephonyManager;
 import android.text.format.DateFormat;
 import android.util.DisplayMetrics;
@@ -54,7 +55,9 @@ import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
 import com.inuker.bluetooth.library.BluetoothClient;
@@ -91,6 +94,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private static final String WATERMARK_TEXT = "安全生产";
     private static final String CHANNEL_ID ="wps" ;
     private static final int NOTICE_PERMISSION_REQUEST_CODE = 3 ;
+    private static final int NOTIFICATION_ID = 4 ;
 
     private EMDKManager emdkManager = null;
     private BarcodeManager barcodeManager = null;
@@ -125,6 +129,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private ValueCallback<Uri> mUploadCallbackBelow;
     private Uri imageUri;
     private ValueCallback<Uri[]> mUploadCallbackAboveL;
+    private boolean isGrant= false;
+    NotificationChannel channel;
 
 
     public final IMyBinder getPrinterBinder() {
@@ -300,6 +306,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         layoutParams.bottomMargin=(int)getNavigationBarHeight();
         webView.setLayoutParams(layoutParams);
 
+        createNoticeChannel();
     }
 
     @Override
@@ -1044,6 +1051,101 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         return result;
     }
 
+
+    /**
+     * 创建通知渠道
+     */
+    public  void createNoticeChannel(){
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+
+              if(channel == null){
+                  channel = new NotificationChannel(CHANNEL_ID, "WPS", NotificationManager.IMPORTANCE_HIGH);
+                  channel.setDescription("消息通知");
+                  channel.enableLights(true);
+                  channel.setLightColor(Color.BLUE);
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                      channel.setAllowBubbles(true);
+                  }
+                  channel.enableVibration(true);
+                  NotificationManager notificationManager = (NotificationManager) this.getSystemService(Context.NOTIFICATION_SERVICE);
+                  notificationManager.createNotificationChannel(channel);
+              }
+
+          }
+      }
+
+
+    /**
+     * 发送可点击的消息通知
+     *
+     * @param context
+     * @param needSound
+     * @param content
+     */
+    public void sendClickableNotification(Context context,Boolean needSound, String content,int max, int progress,PendingIntent intent) {
+        if (!isGrant) {
+            requestNotificationPermission();
+        }
+        // 创建通知渠道 (对于Android Oreo及以上版本)
+
+
+//        // 创建意图 PendingIntent，用于点击通知后启动目标Activity
+//        PendingIntent contentIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+
+        // 创建通知构建器
+        NotificationCompat.Builder  builder = new NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.logo) // 设置小图标
+                .setContentTitle("WPS") // 设置通知标题
+                .setContentText(content) // 设置通知内容
+                .setAutoCancel(false)
+                .setProgress(max, progress, false)
+                .setGroup("wps")
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setContentIntent(intent)
+                .setChannelId(CHANNEL_ID).setOnlyAlertOnce(true)
+        ; // 设置点击后的意图
+    if(needSound) {
+        NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        manager.cancel(NOTIFICATION_ID);
+        manager.notify(NOTIFICATION_ID+1, builder.build());
+    }else {
+        NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        manager.notify(NOTIFICATION_ID, builder.build());
+    }
+        // 获取通知管理器实例
+
+    }
+
+    /**
+     * 动态申请 通知权限
+     */
+    public void requestNotificationPermission() {
+        // Java代码动态申请POST_NOTIFICATIONS权限
+        if (Build.VERSION.SDK_INT >= 33) {
+            int checkPermission =
+                    ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS);
+            if (checkPermission != PackageManager.PERMISSION_GRANTED) {
+                //动态申请
+                ActivityCompat.requestPermissions((Activity) this, new String[]{
+                        Manifest.permission.POST_NOTIFICATIONS}, NOTICE_PERMISSION_REQUEST_CODE);
+            } else {
+                isGrant = true;
+                Log.d(TAG, "requestNotificationPermission: 已经授权");
+            }
+        } else {
+            int checkPermission =
+                    ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_NOTIFICATION_POLICY);
+            if (checkPermission != PackageManager.PERMISSION_GRANTED) {
+                //动态申请
+                ActivityCompat.requestPermissions((Activity) this, new String[]{
+                        Manifest.permission.ACCESS_NOTIFICATION_POLICY}, NOTICE_PERMISSION_REQUEST_CODE);
+            } else {
+                isGrant = true;
+                Log.d(TAG, "requestNotificationPermission: 已经授权");
+            }
+        }
+
+    }
 
 }
 
