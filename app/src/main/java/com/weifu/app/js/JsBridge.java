@@ -857,7 +857,7 @@ private  static  class PrintWorkHandler extends Handler {
       String name = "wpsChann";
       String contentText = "分拣单"+orerNo+"打印完成";
       if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-          NotificationChannel channel = new NotificationChannel(id, name, NotificationManager.IMPORTANCE_DEFAULT);
+          NotificationChannel channel = new NotificationChannel(id, name, NotificationManager.IMPORTANCE_HIGH);
           manager.createNotificationChannel(channel);
           Notification notification = new NotificationCompat.Builder(this.activity, "printNotice").setChannelId(id).setAutoCancel(true).setSmallIcon(R.drawable.logo).setContentText(contentText).build();
           manager.notify(new Random().nextInt(),notification);

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- 内部存储根目录下的files目录 -->
-    <external-files-path name="ehs" path="."/>
+    <external-files-path name="wms" path="."/>
 
     <!-- 或者指定内部缓存目录 -->
     <cache-path name="cache_images" path="."/>
