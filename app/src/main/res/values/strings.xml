@@ -9,5 +9,5 @@
     <string name="txt_permission_open_des">在设置-应用%1$s-权限中开启%2$s权限，以正常使用%3$s功能</string>
     <string name="txt_to_setting">去设置</string>
     <!-- apk更新地址 -->
-    <string name="version_url">http://10.1.50.24/repository/auto-update/wps-ma/version.xml</string>
+    <string name="version_url">http://10.1.50.24/repository/auto-update/wps-vh-dev/version.xml</string>
 </resources>
