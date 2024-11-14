@@ -19,6 +19,7 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Color;
 import android.hardware.biometrics.BiometricPrompt;
+import android.hardware.fingerprint.FingerprintManager;
 import android.net.Uri;
 import android.os.Build;
 //import android.support.v7.app.AppCompatActivity;
@@ -762,5 +763,12 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 //        biometricPrompt.authenticate(promptInfo);
 //    }
 
+    public boolean isFingerprintAuthAvailable() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            FingerprintManager fingerprintManager = (FingerprintManager) getSystemService(FINGERPRINT_SERVICE);
+            return fingerprintManager.isHardwareDetected() && fingerprintManager.hasEnrolledFingerprints();
+        }
+        return false;
+    }
 
 }
