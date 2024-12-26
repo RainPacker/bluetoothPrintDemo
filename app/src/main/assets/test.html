@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body id="body">
+<div style="margin: 050% auto;">
+<button onclick="scan()">扫一扫</button>
+    <input type="text" name="content" id="content"/>
+    <button onclick="sendNotice()">发送通知</button>
+<div id="rsult"></div>
+</div>
+<script >
+    function scan() {
+     // JsBridge.sanQR();
+      JsBridge.startFingerprintAuthentication();
+    }
+    function qrResult(rs) {
+      document.getElementById("rsult").innerHTML = rs;
+    }
+    function sendNotice (){
+      var content =   document.getElementById("content").value;
+      JsBridge.sendMessageNotice(content);
+    }
+    function handleFingerprintResult(rs){
+         console.log(rs);
+    }
+
+</script>
+</body>
+</html>

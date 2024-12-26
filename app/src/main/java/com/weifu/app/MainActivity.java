@@ -84,7 +84,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
     String TAG = getClass().getSimpleName();
     // prod
-    private static final String LOADRL ="http://10.1.4.138:9001/" ;
+  //  private static final String LOADRL ="http://10.1.4.138:9001/" ;
+    private static final String LOADRL ="file:///android_asset/test.html" ;
    // private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10001;
@@ -244,6 +245,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         jsBridge = new JsBridge(this);
         // 注册配置文件 斑马专用
         jsBridge.createProfile();
+        jsBridge.startFingerprintAuthentication();
         // 注册广播
         IntentFilter actionFilters = new IntentFilter();
         actionFilters.addAction(JsBridge.ACTION_IDATA_SCANRESULT);
@@ -769,6 +771,81 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
             return fingerprintManager.isHardwareDetected() && fingerprintManager.hasEnrolledFingerprints();
         }
         return false;
+    }
+
+    public void startFingerprintAuthentication() {
+        MainActivity activity = this;
+        androidx.biometric.BiometricPrompt biometricPrompt = new androidx.biometric.BiometricPrompt(activity, new androidx.biometric.BiometricPrompt.AuthenticationCallback() {
+            @Override
+            public void onAuthenticationSucceeded(androidx.biometric.BiometricPrompt.AuthenticationResult result) {
+                super.onAuthenticationSucceeded(result);
+                activity.runOnUiThread(() -> {
+                    // 将错误信息传递给WebView中的JavaScript代码
+                    String js = "javascript:handleFingerprintResult(true, '" + result + "')";
+                    activity.runOnUiThread(() ->activity.getWebView() .loadUrl(js));
+                });
+                // 处理成功认证
+            }
+
+            @Override
+            public void onAuthenticationFailed() {
+                super.onAuthenticationFailed();
+                activity.runOnUiThread(() -> {
+                    // 将错误信息传递给WebView中的JavaScript代码
+                    String js = "javascript:handleFingerprintResult(false)";
+                    activity.runOnUiThread(() ->activity.getWebView() .loadUrl(js));
+                });
+                // 处理失败认证
+            }
+        });
+//        // 启动指纹认证流程
+//        BiometricPrompt biometricPrompt = new BiometricPrompt((FragmentActivity) activity,
+//                ContextCompat.getMainExecutor(activity),
+//                new BiometricPrompt.AuthenticationCallback() {
+//                    @Override
+//                    public void onAuthenticationError(int errorCode, CharSequence errString) {
+//                        super.onAuthenticationError(errorCode, errString);
+//                        activity.runOnUiThread(() -> {
+//                            // 将错误信息传递给WebView中的JavaScript代码
+//                            String js = "javascript:handleFingerprintResult(false, '" + errString + "')";
+//                             activity.runOnUiThread(() ->activity.getWebView() .loadUrl(js));
+//                        });
+//                    }
+//
+//                    @Override
+//                    public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
+//                        super.onAuthenticationSucceeded(result);
+//                        activity.runOnUiThread(() -> {
+//                            // 认证成功后可以生成JWT或其他操作
+//                            String jwtToken = generateJwtToken(); // 假设有一个方法生成JWT
+//                            // 将成功信息传递给WebView中的JavaScript代码
+//                            String js = "javascript:handleFingerprintResult(true, 'Authentication succeeded')";
+//                          activity.runOnUiThread(() ->  activity.getWebView().loadUrl(js));
+//                        });
+//                    }
+//
+//                    @Override
+//                    public void onAuthenticationFailed() {
+//                        super.onAuthenticationFailed();
+//                        activity.runOnUiThread(() -> {
+//                            // 将失败信息传递给WebView中的JavaScript代码
+//                            String js = "javascript:handleFingerprintResult(false, 'Authentication failed')";
+//                             activity.runOnUiThread(() ->  activity.getWebView().loadUrl(js));
+//                        });
+//                    }
+//                });
+
+
+        // 设置提示信息
+        androidx.biometric.BiometricPrompt.PromptInfo promptInfo = new androidx.biometric.BiometricPrompt.PromptInfo.Builder()
+                .setTitle("Fingerprint Login")
+                .setSubtitle("Please use your fingerprint to authenticate")
+                .setDescription("Enhance account security")
+                .setNegativeButtonText("Cancel")
+                .build();
+
+        // 显示指纹认证对话框
+        biometricPrompt.authenticate(promptInfo);
     }
 
 }

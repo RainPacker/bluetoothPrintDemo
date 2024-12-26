@@ -5,6 +5,7 @@ import static android.content.Context.NOTIFICATION_SERVICE;
 import static androidx.core.content.ContextCompat.getSystemService;
 import static com.inuker.bluetooth.library.Code.REQUEST_SUCCESS;
 
+import android.app.Activity;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -27,11 +28,15 @@ import android.os.Message;
 import android.util.Log;
 import android.util.Patterns;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
+import androidx.biometric.BiometricPrompt;
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
+import androidx.fragment.app.FragmentActivity;
 
 import com.google.gson.Gson;
 import com.inuker.bluetooth.library.BluetoothClient;
@@ -999,6 +1004,21 @@ private  static  class PrintWorkHandler extends Handler {
         sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_SET_CONFIG, profileConfig);
 
 
+    }
+
+
+
+    @JavascriptInterface
+    public void startFingerprintAuthentication() {
+         this.activity.runOnUiThread(()->{
+             this.activity.startFingerprintAuthentication();
+         });
+
+    }
+
+    private String generateJwtToken() {
+        // 这里假设有一个方法可以根据用户信息生成JWT
+        return "your_jwt_token_here";
     }
 
 
