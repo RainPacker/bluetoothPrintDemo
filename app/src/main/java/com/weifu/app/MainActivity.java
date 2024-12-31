@@ -47,7 +47,9 @@ import android.webkit.WebViewClient;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.biometric.BiometricManager;
 
 
 import com.inuker.bluetooth.library.BluetoothClient;
@@ -68,12 +70,20 @@ import java.io.File;
 import java.io.IOException;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.KeyPairGenerator;
+import java.security.KeyStore;
+import java.security.Signature;
+import java.security.SignatureException;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+
 public class MainActivity extends AppCompatActivity /**implements Scanner.DataListener, EMDKManager.EMDKListener**/ {
      private static final int REQUEST_OPEN = 0X01;
+    private static final String  KEY_NAME = "wms_finger" ;
 
     private EMDKManager emdkManager = null;
     private BarcodeManager barcodeManager = null;
@@ -106,6 +116,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private BiometricPrompt biometricPrompt;
     private BiometricPrompt.AuthenticationCallback callback;
     private KeyPairGenerator keyPairGenerator;
+    private KeyStore keyStore;
+    private Cipher cipher;
 
 
     public final IMyBinder getPrinterBinder() {
@@ -120,9 +132,15 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         return scanner;
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.M)
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+
+        if (checkBiometricSupport()) {
+            createAndInitializeKey();
+            initCipher();
+        }
      //   XUI.initTheme(this);
 //        this.requestWindowFeature(Window.FEATURE_NO_TITLE);
 //        this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
@@ -130,6 +148,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
   //      this.makeStatusBarTransparent(this);
      //   setFullscreen(true, true);
        // setAndroidNativeLightStatusBar(this, true);
+
         getWindow().setNavigationBarColor(Color.parseColor("#004098"));
         super.onCreate(savedInstanceState);
        // initReceiver();
@@ -773,12 +792,23 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         return false;
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.P)
     public void startFingerprintAuthentication() {
         MainActivity activity = this;
         androidx.biometric.BiometricPrompt biometricPrompt = new androidx.biometric.BiometricPrompt(activity, new androidx.biometric.BiometricPrompt.AuthenticationCallback() {
             @Override
             public void onAuthenticationSucceeded(androidx.biometric.BiometricPrompt.AuthenticationResult result) {
                 super.onAuthenticationSucceeded(result);
+                androidx.biometric.BiometricPrompt.CryptoObject cryptoObject = result.getCryptoObject();
+                Signature signature = cryptoObject.getSignature();
+
+                try {
+                    byte[] fingerprintData = signature.sign();
+                    Log.d(TAG, "onAuthenticationSucceeded: "+new String(fingerprintData));
+                } catch (SignatureException e) {
+                    throw new RuntimeException(e);
+                }
+                Log.d(TAG, "onAuthenticationSucceeded: "+   result.hashCode());
                 activity.runOnUiThread(() -> {
                     // 将错误信息传递给WebView中的JavaScript代码
                     String js = "javascript:handleFingerprintResult(true, '" + result + "')";
@@ -845,7 +875,63 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
                 .build();
 
         // 显示指纹认证对话框
-        biometricPrompt.authenticate(promptInfo);
+        biometricPrompt.authenticate(promptInfo,new androidx.biometric.BiometricPrompt.CryptoObject(cipher));
     }
+
+
+
+
+
+    @RequiresApi(api = Build.VERSION_CODES.M)
+    public void generateOrRetrieveKey(String keyName) throws Exception {
+        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+        keyStore.load(null);
+
+        if (!keyStore.containsAlias(keyName)) {
+            KeyGenerator keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
+            keyGenerator.init(
+                    new KeyGenParameterSpec.Builder(keyName,
+                            KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                            .setUserAuthenticationRequired(true)
+                            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                            .build());
+            keyGenerator.generateKey();
+        }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.M)
+    private void createAndInitializeKey() {
+        try {
+            KeyGenerator keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
+            keyGenerator.init(new KeyGenParameterSpec.Builder(KEY_NAME,
+                    KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                    .setUserAuthenticationRequired(true)
+                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .build());
+            keyGenerator.generateKey();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void initCipher() {
+        try {
+            keyStore = KeyStore.getInstance("AndroidKeyStore");
+            keyStore.load(null);
+            SecretKey secretKey = (SecretKey) keyStore.getKey(KEY_NAME, null);
+            cipher = Cipher.getInstance(KeyProperties.KEY_ALGORITHM_AES + "/" + KeyProperties.BLOCK_MODE_GCM + "/" + KeyProperties.ENCRYPTION_PADDING_NONE);
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private boolean checkBiometricSupport() {
+        BiometricManager biometricManager = BiometricManager.from(this);
+        return biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS;
+    }
+
 
 }
