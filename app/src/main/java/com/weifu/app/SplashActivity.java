@@ -25,9 +25,8 @@ import android.widget.ImageView;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.weifu.action.PermissionsResultAction;
-import com.weifu.app.ui.custom.HighlightingLogoView;
-import com.weifu.utils.PermissionsManager;
+
+import com.bumptech.glide.Glide;
 
 import java.util.Objects;
 
@@ -47,6 +46,7 @@ public class SplashActivity extends AppCompatActivity {
 //            finish();
 //            return;
 //        }
+
         WindowManager windowManager = (WindowManager) this.getSystemService(Context.WINDOW_SERVICE);
         DisplayMetrics displayMetrics = new DisplayMetrics();
         windowManager.getDefaultDisplay().getMetrics(displayMetrics);
@@ -73,32 +73,8 @@ public class SplashActivity extends AppCompatActivity {
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
         Objects.requireNonNull(getSupportActionBar()).hide();
         setContentView(R.layout.act_spread_layout);
-   /*     // 获取ImageView
-        ImageView loadingLogo = findViewById(R.id.imageView2);
-
-        // 获取图片的实际宽度
-        final Drawable drawable = loadingLogo.getDrawable();
-        final int targetWidth = drawable.getIntrinsicWidth();*/
-
-// 创建属性动画
-  /*      ValueAnimator animator = ValueAnimator.ofInt(0, targetWidth);
-        animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
-            @Override
-            public void onAnimationUpdate(ValueAnimator animation) {
-                // 获取当前动画的值并设置到ImageView的宽度上
-                int currentValue = (int) animation.getAnimatedValue();
-                ViewGroup.LayoutParams layoutParams = loadingLogo.getLayoutParams();
-                layoutParams.width = currentValue;
-                loadingLogo.setLayoutParams(layoutParams);
-            }
-        });*/
-
-// 设置动画的时长和其他属性
-      /*  animator.setDuration(1000);
-        animator.setInterpolator(new LinearInterpolator())*/; // 线性插值器，也可以换成其他你喜欢的插值器
-
-// 开始动画
-     //   animator.start();
+        ImageView welcome_gif = (ImageView) findViewById(R.id.imageView2);
+        Glide.with(this).load(R.drawable.logo_gif).into(welcome_gif);
 
 
  
