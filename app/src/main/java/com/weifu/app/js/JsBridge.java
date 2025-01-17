@@ -2,11 +2,9 @@ package com.weifu.app.js;
 
 
 import static android.content.Context.NOTIFICATION_SERVICE;
-import static androidx.core.content.ContextCompat.getSystemService;
 import static com.inuker.bluetooth.library.Code.REQUEST_SUCCESS;
 
 import android.Manifest;
-import android.app.Activity;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -30,56 +28,38 @@ import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
-import android.util.Patterns;
 import android.webkit.JavascriptInterface;
-import android.webkit.WebView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
-import androidx.biometric.BiometricManager;
-import androidx.biometric.BiometricPrompt;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
-import androidx.fragment.app.FragmentActivity;
 
 import com.google.gson.Gson;
 import com.inuker.bluetooth.library.BluetoothClient;
 import com.inuker.bluetooth.library.connect.options.BleConnectOptions;
 import com.inuker.bluetooth.library.connect.response.BleConnectResponse;
-import com.inuker.bluetooth.library.connect.response.BleReadResponse;
 import com.inuker.bluetooth.library.connect.response.BleWriteResponse;
 import com.inuker.bluetooth.library.model.BleGattProfile;
-import com.inuker.bluetooth.library.receiver.listener.BluetoothBondListener;
-import com.symbol.emdk.barcode.Scanner;
-import com.symbol.emdk.barcode.ScannerException;
 import com.weifu.app.MainActivity;
 import com.weifu.app.R;
 import com.weifu.app.scan.ScannerInterface;
 import com.weifu.utils.BluetoothUtil;
-import com.weifu.utils.EscPosUtils;
 import com.weifu.utils.PrintUtil;
 import com.zebra.printer.sdk.ZebraPrinter;
 
-import net.posprinter.posprinterface.ProcessData;
 import net.posprinter.posprinterface.TaskCallback;
-import net.posprinter.utils.DataForSendToPrinterPos80;
-import net.posprinter.utils.StringUtils;
-
-import org.json.JSONObject;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class JsBridge extends BroadcastReceiver {
@@ -1064,7 +1044,7 @@ private  static  class PrintWorkHandler extends Handler {
 
         // 创建通知构建器
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(R.drawable.logo) // 设置小图标
+                .setSmallIcon(R.drawable.logo_gif) // 设置小图标
                 .setContentTitle("安全生产") // 设置通知标题
                 .setContentText(content) // 设置通知内容
                 .setAutoCancel(false)

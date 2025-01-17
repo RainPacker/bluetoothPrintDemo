@@ -10,9 +10,11 @@ import android.util.Log;
 import android.view.MotionEvent;
 import android.view.Window;
 import android.view.WindowManager;
+import android.widget.ImageView;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.bumptech.glide.Glide;
 import com.weifu.action.PermissionsResultAction;
 import com.weifu.utils.PermissionsManager;
 
@@ -43,6 +45,8 @@ public class SplashActivity extends AppCompatActivity {
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
         Objects.requireNonNull(getSupportActionBar()).hide();
         setContentView(R.layout.act_spread_layout);
+        ImageView welcome_gif = (ImageView) findViewById(R.id.imageView2);
+        Glide.with(this).load(R.drawable.logo_gif).into(welcome_gif);
 
 
  
