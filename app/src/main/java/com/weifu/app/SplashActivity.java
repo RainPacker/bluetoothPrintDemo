@@ -16,6 +16,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.bumptech.glide.Glide;
 import com.weifu.action.PermissionsResultAction;
+import com.weifu.app.utils.KeyUtils;
 import com.weifu.utils.PermissionsManager;
 
 import java.util.Objects;
@@ -35,6 +36,7 @@ public class SplashActivity extends AppCompatActivity {
 //            finish();
 //            return;
 //        }
+
 
         getWindow().setNavigationBarColor(Color.WHITE);
 
@@ -71,7 +73,7 @@ public class SplashActivity extends AppCompatActivity {
         if (isStartMainActivity == false){
  
             isStartMainActivity = true;
-            Intent intent = new Intent(this,MainActivity.class);
+            Intent intent = new Intent(this,AuthActivity.class);
             startActivity(intent);
  
             finish();

@@ -10,4 +10,9 @@
     <string name="txt_to_setting">去设置</string>
     <!-- apk更新地址 -->
     <string name="version_url">http://maven.weifu.com.cn/repository/auto-update/wps/version.xml</string>
+    <string name="etPassword">密码</string>
+    <string name="etUsernam">用户名</string>
+    <string name="btnRegister">注册</string>
+    <string name="btnFingerprint">指纹登录</string>
+    <string name="btnPasswordLogin">密码登录</string>
 </resources>

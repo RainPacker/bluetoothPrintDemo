@@ -14,11 +14,11 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Color;
-import android.hardware.biometrics.BiometricPrompt;
 import android.hardware.fingerprint.FingerprintManager;
 import android.net.Uri;
 import android.os.Build;
@@ -50,6 +50,7 @@ import android.widget.Toast;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.biometric.BiometricManager;
+import androidx.biometric.BiometricPrompt;
 
 
 import com.inuker.bluetooth.library.BluetoothClient;
@@ -61,6 +62,8 @@ import com.symbol.emdk.barcode.Scanner;
 import com.symbol.emdk.barcode.ScannerInfo;
 import com.weifu.action.PermissionsResultAction;
 import com.weifu.app.js.JsBridge;
+import com.weifu.app.utils.KeyUtils;
+import com.weifu.app.utils.SecurityUtils;
 import com.weifu.app.version.UpdateManager;
 import com.weifu.utils.PermissionsManager;
 
@@ -68,11 +71,13 @@ import net.posprinter.posprinterface.IMyBinder;
 
 import java.io.File;
 import java.io.IOException;
-import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
+import java.security.NoSuchAlgorithmException;
 import java.security.Signature;
 import java.security.SignatureException;
+import java.security.cert.CertificateException;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Executor;
@@ -118,6 +123,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private KeyPairGenerator keyPairGenerator;
     private KeyStore keyStore;
     private Cipher cipher;
+    private String currentUserId ="1111";
+    private Executor executor;
 
 
     public final IMyBinder getPrinterBinder() {
@@ -137,10 +144,10 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     @Override
     protected void onCreate(Bundle savedInstanceState) {
 
-        if (checkBiometricSupport()) {
-            createAndInitializeKey();
-            initCipher();
-        }
+//        if (checkBiometricSupport()) {
+//            createAndInitializeKey();
+//            initCipher();
+//        }
      //   XUI.initTheme(this);
 //        this.requestWindowFeature(Window.FEATURE_NO_TITLE);
 //        this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
@@ -148,6 +155,18 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
   //      this.makeStatusBarTransparent(this);
      //   setFullscreen(true, true);
        // setAndroidNativeLightStatusBar(this, true);
+        biometricPrompt = new BiometricPrompt(this, executor, new BiometricPrompt.AuthenticationCallback() {
+            @Override
+            public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
+                try {
+                    if (SecurityUtils.verifyPassword(currentUserId, getStoredCredential())) {
+                        //
+                    }
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "认证失败", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
 
         getWindow().setNavigationBarColor(Color.parseColor("#004098"));
         super.onCreate(savedInstanceState);
@@ -928,10 +947,35 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         }
     }
 
-    private boolean checkBiometricSupport() {
-        BiometricManager biometricManager = BiometricManager.from(this);
-        return biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS;
+
+
+    private void showBiometricPrompt() {
+        BiometricPrompt.PromptInfo promptInfo = new BiometricPrompt.PromptInfo.Builder()
+                .setTitle("指纹登录")
+                .setSubtitle("请验证指纹")
+                .setNegativeButtonText("使用密码")
+                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                .build();
+
+        biometricPrompt.authenticate(promptInfo);
     }
+
+    private void saveUserCredential(String username, String data) {
+        SharedPreferences pref = getSharedPreferences("user_creds", MODE_PRIVATE);
+        pref.edit().putString(username, data).apply();
+    }
+
+    private String getStoredCredential() {
+        SharedPreferences pref = getSharedPreferences("user_creds", MODE_PRIVATE);
+        return pref.getString(currentUserId, "");
+    }
+
+    private boolean verifyPassword(String input) {
+        // 实际应对比服务端验证
+        return input.equals("temp_password");
+    }
+
+
 
 
 }
