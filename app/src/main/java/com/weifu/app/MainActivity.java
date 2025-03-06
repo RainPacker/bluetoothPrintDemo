@@ -155,18 +155,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
   //      this.makeStatusBarTransparent(this);
      //   setFullscreen(true, true);
        // setAndroidNativeLightStatusBar(this, true);
-        biometricPrompt = new BiometricPrompt(this, executor, new BiometricPrompt.AuthenticationCallback() {
-            @Override
-            public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
-                try {
-                    if (SecurityUtils.verifyPassword(currentUserId, getStoredCredential())) {
-                        //
-                    }
-                } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, "认证失败", Toast.LENGTH_SHORT).show();
-                }
-            }
-        });
+
 
         getWindow().setNavigationBarColor(Color.parseColor("#004098"));
         super.onCreate(savedInstanceState);
@@ -919,61 +908,13 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         }
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.M)
-    private void createAndInitializeKey() {
-        try {
-            KeyGenerator keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
-            keyGenerator.init(new KeyGenParameterSpec.Builder(KEY_NAME,
-                    KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
-                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                    .setUserAuthenticationRequired(true)
-                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                    .build());
-            keyGenerator.generateKey();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void initCipher() {
-        try {
-            keyStore = KeyStore.getInstance("AndroidKeyStore");
-            keyStore.load(null);
-            SecretKey secretKey = (SecretKey) keyStore.getKey(KEY_NAME, null);
-            cipher = Cipher.getInstance(KeyProperties.KEY_ALGORITHM_AES + "/" + KeyProperties.BLOCK_MODE_GCM + "/" + KeyProperties.ENCRYPTION_PADDING_NONE);
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
 
 
 
-    private void showBiometricPrompt() {
-        BiometricPrompt.PromptInfo promptInfo = new BiometricPrompt.PromptInfo.Builder()
-                .setTitle("指纹登录")
-                .setSubtitle("请验证指纹")
-                .setNegativeButtonText("使用密码")
-                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-                .build();
 
-        biometricPrompt.authenticate(promptInfo);
-    }
 
-    private void saveUserCredential(String username, String data) {
-        SharedPreferences pref = getSharedPreferences("user_creds", MODE_PRIVATE);
-        pref.edit().putString(username, data).apply();
-    }
 
-    private String getStoredCredential() {
-        SharedPreferences pref = getSharedPreferences("user_creds", MODE_PRIVATE);
-        return pref.getString(currentUserId, "");
-    }
 
-    private boolean verifyPassword(String input) {
-        // 实际应对比服务端验证
-        return input.equals("temp_password");
-    }
 
 
 

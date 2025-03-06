@@ -15,4 +15,8 @@
     <color name="colorPrimary">#299EE3</color>
     <color name="colorPrimaryDark">#299EE3</color>
     <color name="colorAccent">#299EE3</color>
+    
+    <!-- 登录页面颜色 -->
+    <color name="background_color">#F5F5F5</color>
+    <color name="primary_text">#212121</color>
 </resources>
