@@ -63,6 +63,7 @@ import com.symbol.emdk.barcode.ScannerInfo;
 import com.weifu.action.PermissionsResultAction;
 import com.weifu.app.js.JsBridge;
 import com.weifu.app.utils.KeyUtils;
+import com.weifu.app.utils.NfcUtils;
 import com.weifu.app.utils.SecurityUtils;
 import com.weifu.app.version.UpdateManager;
 import com.weifu.utils.PermissionsManager;
@@ -318,6 +319,13 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
             Log.e("WebViewVersionFetcher", "Package not found: " + e.getMessage());
         }
 
+      // nfc 初始化
+
+        try {
+            NfcUtils.NfcInit(this);
+        } catch (Exception e) {
+           Log.e("nfcinit",e.getMessage());
+        }
     }
 
     @Override
