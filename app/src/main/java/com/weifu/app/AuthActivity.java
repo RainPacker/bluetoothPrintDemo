@@ -14,14 +14,24 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Toast;
 
+import com.weifu.app.js.JsBridge;
+import com.weifu.app.sound.SoundPlayer;
+import com.weifu.app.utils.NotificationUtil;
 import com.weifu.app.utils.SecurityUtils;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import androidx.appcompat.app.AlertDialog;
 
+import java.net.URISyntaxException;
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+
+import io.socket.client.IO;
+import io.socket.client.Socket;
 
 public class AuthActivity extends AppCompatActivity {
     private static final String TAG = "AuthActivity";
@@ -39,6 +49,8 @@ public class AuthActivity extends AppCompatActivity {
     private MaterialButton btnFingerprint;
     private MaterialButton btnPasswordLogin;
     private MaterialButton btnEnableFingerprint;
+
+    private Socket mSocket;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -65,6 +77,9 @@ public class AuthActivity extends AppCompatActivity {
 
         // 尝试恢复上次登录的用户
         restoreLastLoginUser();
+        initSocketIO();
+        // 初始化通知渠道
+        NotificationUtil.createNotificationChannel(this);
     }
     
     /**
@@ -626,5 +641,53 @@ public class AuthActivity extends AppCompatActivity {
                 .setCancelable(true)
                 .show();
         }
+    }
+
+
+    public  void initSocketIO (){
+        try {
+            IO.Options options = new IO.Options();
+           // options.path = "/socket.io";
+            options.reconnection= true;
+            Map<String,String> auth = new HashMap<>();
+            auth.put("andriod","1");
+            options.transports = new String[] { "websocket","polling" }; // 禁用Polling
+            options.auth = auth;
+            options.upgrade= true;
+            String url = "http://10.1.84.101:9099";
+             mSocket = IO.socket(url, options);
+            Log.d(TAG, "initSocketIO: "+mSocket.connect());
+
+        } catch (URISyntaxException e) {
+            Log.e(TAG, "initSocketIO: ",e );
+            Toast.makeText(this,"服务器连接异常",Toast.LENGTH_SHORT).show();
+        }
+          setupSocketListeners();
+          mSocket.connect();
+        Log.d(TAG, "initSocketIO: "+mSocket.connected());
+
+    }
+
+    private void setupSocketListeners() {
+        mSocket.on(Socket.EVENT_CONNECT, args -> Log.d(TAG, "Connected to server"));
+
+        mSocket.on("chat", args -> {
+            String message = (String) args[0];
+            Log.d(TAG, "收到消息: " + message);
+            runOnUiThread(()->{
+                Toast.makeText(this,message,Toast.LENGTH_SHORT).show();
+            });
+
+
+            // 播放提示音
+            SoundPlayer.playNotificationSound(AuthActivity.this);
+
+
+            // 发送通知
+            NotificationUtil.showNotification(AuthActivity.this, message);
+        });
+        mSocket.on(Socket.EVENT_CONNECT_ERROR, args -> Log.d(TAG, args[0].toString()));
+
+        mSocket.on(Socket.EVENT_DISCONNECT, args -> Log.d(TAG, "Disconnected from server"));
     }
 }
