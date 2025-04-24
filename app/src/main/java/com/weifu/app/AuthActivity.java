@@ -21,11 +21,14 @@ import com.weifu.app.utils.SecurityUtils;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
+import com.weifu.app.utils.TTSUtils;
+
 import androidx.appcompat.app.AlertDialog;
 
 import java.net.URISyntaxException;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -51,6 +54,7 @@ public class AuthActivity extends AppCompatActivity {
     private MaterialButton btnEnableFingerprint;
 
     private Socket mSocket;
+    private TTSUtils ttsUtils;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -80,6 +84,7 @@ public class AuthActivity extends AppCompatActivity {
         initSocketIO();
         // 初始化通知渠道
         NotificationUtil.createNotificationChannel(this);
+        ttsUtils = TTSUtils.getInstance(this);
     }
     
     /**
@@ -669,7 +674,12 @@ public class AuthActivity extends AppCompatActivity {
     }
 
     private void setupSocketListeners() {
-        mSocket.on(Socket.EVENT_CONNECT, args -> Log.d(TAG, "Connected to server"));
+        mSocket.on(Socket.EVENT_CONNECT, args ->{ Log.d(TAG, "Connected to server");
+            ttsUtils.setLanguage(Locale.CHINESE);
+            ttsUtils.setSpeechRate(0.9f);
+            ttsUtils.setPitch(1.1f);
+            ttsUtils.addToQueue("服务连接成功");
+        });
 
         mSocket.on("chat", args -> {
             String message = (String) args[0];
@@ -680,14 +690,23 @@ public class AuthActivity extends AppCompatActivity {
 
 
             // 播放提示音
-            SoundPlayer.playNotificationSound(AuthActivity.this);
-
+         //  SoundPlayer.playNotificationSound(AuthActivity.this);
+            // 设置参数示例
+            ttsUtils.setLanguage(Locale.CHINESE);
+            ttsUtils.setSpeechRate(0.9f);
+            ttsUtils.setPitch(1.1f);
+            ttsUtils.addToQueue(message);
 
             // 发送通知
             NotificationUtil.showNotification(AuthActivity.this, message);
         });
         mSocket.on(Socket.EVENT_CONNECT_ERROR, args -> Log.d(TAG, args[0].toString()));
 
-        mSocket.on(Socket.EVENT_DISCONNECT, args -> Log.d(TAG, "Disconnected from server"));
+        mSocket.on(Socket.EVENT_DISCONNECT, args ->{ Log.d(TAG, "Disconnected from server");
+            ttsUtils.setLanguage(Locale.CHINESE);
+            ttsUtils.setSpeechRate(1.0f);
+            ttsUtils.setPitch(1.1f);
+            ttsUtils.addToQueue("连接已经断开");
+        });
     }
 }
