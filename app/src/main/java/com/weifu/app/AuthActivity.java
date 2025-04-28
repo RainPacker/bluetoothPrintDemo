@@ -652,7 +652,7 @@ public class AuthActivity extends AppCompatActivity {
     public  void initSocketIO (){
         try {
             IO.Options options = new IO.Options();
-           // options.path = "/socket.io";
+            options.path = "/socket.io";
             options.reconnection= true;
             Map<String,String> auth = new HashMap<>();
             auth.put("andriod","1");
@@ -704,7 +704,7 @@ public class AuthActivity extends AppCompatActivity {
 
         mSocket.on(Socket.EVENT_DISCONNECT, args ->{ Log.d(TAG, "Disconnected from server");
             ttsUtils.setLanguage(Locale.CHINESE);
-            ttsUtils.setSpeechRate(1.0f);
+            ttsUtils.setSpeechRate(0.9f);
             ttsUtils.setPitch(1.1f);
             ttsUtils.addToQueue("连接已经断开");
         });

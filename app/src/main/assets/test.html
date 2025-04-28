@@ -15,10 +15,10 @@
     <button onclick="sendNotice()">发送通知</button>
 <div id="rsult"></div>
 </div>
-<script >
+<script type="text/javascript" >
     function scan() {
-     // JsBridge.sanQR();
-      JsBridge.startFingerprintAuthentication();
+      JsBridge.sanQR();
+     // JsBridge.startFingerprintAuthentication();
     }
     function check() {
      alert(JsBridge.checkBiometricSupport());
