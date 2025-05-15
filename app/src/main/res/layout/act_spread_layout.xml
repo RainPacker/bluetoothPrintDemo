@@ -13,8 +13,8 @@
         android:layout_width="250dp"
         android:layout_height="100dp"
         android:layout_gravity="center"
-        android:contentDescription="wms"
-        app:srcCompat="@drawable/b_logo_2" />
+        android:contentDescription="@string/logDesc"
+        app:srcCompat="@drawable/logo_00b09c96" />
 
 
 </FrameLayout>
