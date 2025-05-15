@@ -57,6 +57,7 @@ import com.weifu.app.MainActivity;
 import com.weifu.app.R;
 import com.weifu.app.scan.ScannerInterface;
 import com.weifu.app.ui.custom.MyScan;
+import com.weifu.app.utils.NotificationUtil;
 import com.weifu.utils.BluetoothUtil;
 import com.weifu.utils.EscPosUtils;
 import com.weifu.utils.PrintUtil;
@@ -1056,6 +1057,16 @@ private  static  class PrintWorkHandler extends Handler {
    }
 
     /**
+     * 发送文本消息
+     * @param text
+     */
+   @JavascriptInterface
+   public void sendTxtMessageNotice(String text){
+       requestNotificationPermission();
+        NotificationUtil.showNotification(this.activity,text);
+   }
+
+    /**
      * 发送可点击的消息通知
      * @param context
      * @param intent
@@ -1080,7 +1091,7 @@ private  static  class PrintWorkHandler extends Handler {
         // 创建通知构建器
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.logo) // 设置小图标
-                .setContentTitle("安全生产") // 设置通知标题
+                .setContentTitle("智能制造") // 设置通知标题
                 .setContentText(content) // 设置通知内容
                 .setAutoCancel(false)
                 .setGroup("wps")

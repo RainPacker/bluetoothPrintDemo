@@ -66,6 +66,7 @@ import com.weifu.action.PermissionsResultAction;
 import com.weifu.app.js.JsBridge;
 import com.weifu.app.ui.custom.CustomDialog;
 import com.weifu.app.ui.home.AndroidBug5497Workaround;
+import com.weifu.app.utils.NotificationUtil;
 import com.weifu.app.version.UpdateManager;
 import com.weifu.utils.PermissionsManager;
 import com.yzq.zxinglibrary.common.Constant;
@@ -86,7 +87,7 @@ import java.util.Random;
 public class MainActivity extends AppCompatActivity /**implements Scanner.DataListener, EMDKManager.EMDKListener**/ {
      private static final int REQUEST_OPEN = 0X01;
     private static final String COM_WEIFU_IWMS_FILEPROVIDE = "com.weifu.momtt.fileprovider";
-    private static final String WATERMARK_TEXT = "安全生产";
+    private static final String WATERMARK_TEXT = "MOM";
     private static final String CHANNEL_ID ="wps" ;
     private static final int NOTICE_PERMISSION_REQUEST_CODE = 3 ;
 
@@ -101,9 +102,9 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     // prod
 //    private static final String LOADRL ="http://10.1.4.141:81/" ;
 //    private static final String LOADRL ="http://121.225.97.57:18443/" ;
-    private static final String LOADRL ="http://221.229.106.229:8000/pad/" ;
+ //   private static final String LOADRL ="http://221.229.106.229:8000/pad/" ;
 //    private static final String LOADRL ="http://10.1.4.145" ;
-//    private static final String LOADRL ="file:///android_asset/test.html" ;
+    private static final String LOADRL ="file:///android_asset/test.html" ;
 //    private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10011;
@@ -194,6 +195,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         // 横屏
         webView.getSettings().setLoadWithOverviewMode(true);
         webView.getSettings().setUseWideViewPort(true);
+        //   NotificationUtil.createNotificationChannel(this.activity);
+        NotificationUtil.createNotificationChannel(this);
 
         // wevView监听 H5 页面的下载事件
         webView.setDownloadListener(new DownloadListener() {
@@ -254,6 +257,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         }else {
             registerReceiver(jsBridge,actionFilters);
         }
+
 
         webView.addJavascriptInterface(jsBridge, "JsBridge");
 
