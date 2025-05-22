@@ -43,9 +43,12 @@ import com.inuker.bluetooth.library.connect.options.BleConnectOptions;
 import com.inuker.bluetooth.library.connect.response.BleConnectResponse;
 import com.inuker.bluetooth.library.connect.response.BleWriteResponse;
 import com.inuker.bluetooth.library.model.BleGattProfile;
+import com.weifu.app.AuthActivity;
 import com.weifu.app.MainActivity;
 import com.weifu.app.R;
 import com.weifu.app.scan.ScannerInterface;
+import com.weifu.app.utils.NotificationUtil;
+import com.weifu.app.utils.TTSUtils;
 import com.weifu.utils.BluetoothUtil;
 import com.weifu.utils.PrintUtil;
 import com.zebra.printer.sdk.ZebraPrinter;
@@ -53,19 +56,27 @@ import com.zebra.printer.sdk.ZebraPrinter;
 import net.posprinter.posprinterface.TaskCallback;
 
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
+import io.socket.client.IO;
+import io.socket.client.Socket;
 
 public class JsBridge extends BroadcastReceiver {
     public static final int SCAN_QR_REQUEST_CODE = 10001 ;
     private static final String CHANNEL_ID = "2" ;
     private static final int NOTICE_PERMISSION_REQUEST_CODE = 3 ;
+    private static final String SERVER = "http://10.1.84.101:9099";
     String TAG = getClass().getSimpleName();
     private MainActivity activity;
     private ProgressDialog progressDialog;
@@ -106,6 +117,9 @@ public class JsBridge extends BroadcastReceiver {
     private static final String EXTRA_PROFILENAME = "WPS";
 
     private  PrintWorkHandler printWorkHandler;
+
+    private Socket ioSocket;
+    private TTSUtils ttsUtils;
 
 
     public JsBridge(MainActivity mainActivity) {
@@ -1089,6 +1103,69 @@ private  static  class PrintWorkHandler extends Handler {
             }
         }
 
+    }
+
+    /**
+     * 初始化socket
+     *
+      */
+
+    public  void initSocketIO (){
+        try {
+            IO.Options options = new IO.Options();
+            options.path = "/socket.io";
+            options.reconnection= true;
+            Map<String,String> auth = new HashMap<>();
+            auth.put("andriod","1");
+            options.transports = new String[] { "websocket","polling" }; // 禁用Polling
+            options.auth = auth;
+            options.upgrade= true;
+            ioSocket = IO.socket(SERVER, options);
+            Log.d(TAG, "initSocketIO: "+ioSocket.connect());
+
+        } catch (URISyntaxException e) {
+            Log.e(TAG, "initSocketIO: ",e );
+            this.showToast("服务器连接异常");
+        }
+        setupSocketListeners();
+        ioSocket.connect();
+        Log.d(TAG, "initSocketIO: "+ioSocket.connected());
+
+    }
+
+    private void setupSocketListeners() {
+        ioSocket.on(Socket.EVENT_CONNECT, args ->{ Log.d(TAG, "Connected to server");
+            ttsUtils.setLanguage(Locale.CHINESE);
+            ttsUtils.setSpeechRate(0.9f);
+            ttsUtils.setPitch(1.1f);
+            ttsUtils.addToQueue("服务连接成功");
+        });
+
+        ioSocket.on("chat", args -> {
+            String message = (String) args[0];
+            Log.d(TAG, "收到消息: " + message);
+
+
+
+            // 播放提示音
+            //  SoundPlayer.playNotificationSound(AuthActivity.this);
+            // 设置参数示例
+            ttsUtils.setLanguage(Locale.CHINESE);
+            ttsUtils.setSpeechRate(0.9f);
+            ttsUtils.setPitch(1.1f);
+            ttsUtils.addToQueue(message);
+
+            // 发送通知
+            NotificationUtil.showNotification(activity, message);
+        });
+        ioSocket.on(Socket.EVENT_CONNECT_ERROR, args -> Log.d(TAG, args[0].toString()));
+
+        ioSocket.on(Socket.EVENT_DISCONNECT, args ->{ Log.d(TAG, "Disconnected from server");
+            ttsUtils.setLanguage(Locale.CHINESE);
+            ttsUtils.setSpeechRate(0.9f);
+            ttsUtils.setPitch(1.1f);
+            ttsUtils.addToQueue("连接已经断开");
+        });
     }
 
 
