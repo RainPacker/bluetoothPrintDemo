@@ -10,7 +10,7 @@
 <div style="margin: 050% auto;">
 <button onclick="scan()">扫一扫</button>
     <button onclick="check()">生物认证检查</button>
-    <button onclick="auth()">认证</button>
+    <button onclick="auth()">认证登录</button>
     <input type="text" name="content" id="content"/>
     <button onclick="sendNotice()">发送通知</button>
 <div id="rsult"></div>
@@ -18,13 +18,13 @@
 <script type="text/javascript" >
     function scan() {
       JsBridge.sanQR();
-     // JsBridge.startFingerprintAuthentication();
+      JsBridge.sanQR();
     }
     function check() {
      alert(JsBridge.checkBiometricSupport());
     }
     function auth() {
-      JsBridge.startFingerprintAuthentication();
+      JsBridge.login(111,"zyy");
     }
     function qrResult(rs) {
       document.getElementById("rsult").innerHTML = rs;

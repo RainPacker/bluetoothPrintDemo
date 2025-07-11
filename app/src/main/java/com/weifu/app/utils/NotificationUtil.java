@@ -19,7 +19,7 @@ public class NotificationUtil {
 
     public static void createNotificationChannel(Context context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CharSequence name = "Socket Notifications";
+            CharSequence name = "Notifications";
             String description = "Notification channel for socket messages";
             int importance = NotificationManager.IMPORTANCE_HIGH;
             

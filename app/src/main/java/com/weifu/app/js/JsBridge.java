@@ -2,6 +2,7 @@ package com.weifu.app.js;
 
 
 import static android.content.Context.NOTIFICATION_SERVICE;
+import static android.provider.Settings.System.getString;
 import static com.inuker.bluetooth.library.Code.REQUEST_SUCCESS;
 
 import android.Manifest;
@@ -29,6 +30,7 @@ import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -43,14 +45,16 @@ import com.inuker.bluetooth.library.connect.options.BleConnectOptions;
 import com.inuker.bluetooth.library.connect.response.BleConnectResponse;
 import com.inuker.bluetooth.library.connect.response.BleWriteResponse;
 import com.inuker.bluetooth.library.model.BleGattProfile;
-import com.weifu.app.AuthActivity;
 import com.weifu.app.MainActivity;
 import com.weifu.app.R;
 import com.weifu.app.scan.ScannerInterface;
+import com.weifu.app.ui.custom.MyScan;
 import com.weifu.app.utils.NotificationUtil;
 import com.weifu.app.utils.TTSUtils;
 import com.weifu.utils.BluetoothUtil;
 import com.weifu.utils.PrintUtil;
+import com.yzq.zxinglibrary.bean.ZxingConfig;
+import com.yzq.zxinglibrary.common.Constant;
 import com.zebra.printer.sdk.ZebraPrinter;
 
 import net.posprinter.posprinterface.TaskCallback;
@@ -79,7 +83,7 @@ public class JsBridge extends BroadcastReceiver {
     public static final int SCAN_QR_REQUEST_CODE = 10001 ;
     private static final String CHANNEL_ID = "2" ;
     private static final int NOTICE_PERMISSION_REQUEST_CODE = 3 ;
-    private static final String SERVER = "http://10.1.84.101:9099";
+
     String TAG = getClass().getSimpleName();
     private MainActivity activity;
     private ProgressDialog progressDialog;
@@ -119,17 +123,21 @@ public class JsBridge extends BroadcastReceiver {
     private static final String EXTRA_CREATE_PROFILE = "com.symbol.datawedge.api.CREATE_PROFILE";
     private static final String EXTRA_PROFILENAME = "WPS";
 
+    private String socketUrl;
+
     private  PrintWorkHandler printWorkHandler;
 
     private Socket ioSocket;
     private TTSUtils ttsUtils;
 
 
-    public JsBridge(MainActivity mainActivity) {
+    public JsBridge(MainActivity mainActivity, String socketUrl) {
         this.activity = mainActivity;
+        this.socketUrl = socketUrl;
         // 启动工作线程
         HandlerThread handlerThread = new HandlerThread("print-thread");
         handlerThread.start();
+        ttsUtils =TTSUtils.getInstance(mainActivity);
         printWorkHandler=  new PrintWorkHandler(handlerThread.getLooper(), this);
     }
 
@@ -1013,14 +1021,31 @@ private  static  class PrintWorkHandler extends Handler {
 
     }
 
+    /**
+     * webview 实现扫一扫 打开摄像头
+     */
+    @JavascriptInterface
+   public  void   sanQR() {
+        Log.d(TAG, "sanQR: ");
+        Intent intent = new Intent(this.activity, MyScan.class);
+
+        ZxingConfig zxingConfig = new ZxingConfig();
+        zxingConfig.setPlayBeep(true);
+        zxingConfig.setShowAlbum(false);
+        intent.putExtra(Constant.INTENT_ZXING_CONFIG,zxingConfig);
+       activity.startActivityForResult(intent,SCAN_QR_REQUEST_CODE);
+   }
+
+    /**
+     * 清理webview 缓存
+     */
+   @JavascriptInterface
+   public  void  clearWebCache(){
+       WebView webView = this.activity.getWebView();
+       webView.clearCache(true);
 
 
-
-
-    private String generateJwtToken() {
-        // 这里假设有一个方法可以根据用户信息生成JWT
-        return "your_jwt_token_here";
-    }
+   }
 
     /**
      * 发送可点击的消息通知
@@ -1028,7 +1053,9 @@ private  static  class PrintWorkHandler extends Handler {
      */
    @JavascriptInterface
    public  void sendMessageNotice(String content) {
-       this.sendClickableNotification(this.activity,new Intent(this.activity,MainActivity.class),content);
+//       this.sendClickableNotification(this.activity,new Intent(this.activity,MainActivity.class),content);
+       NotificationUtil.createNotificationChannel(this.activity);
+       NotificationUtil.showNotification(this.activity,content);
    }
 
     /**
@@ -1124,7 +1151,7 @@ private  static  class PrintWorkHandler extends Handler {
             options.transports = new String[] { "websocket","polling" }; // 禁用Polling
             options.auth = auth;
             options.upgrade= true;
-            ioSocket = IO.socket(SERVER, options);
+            ioSocket = IO.socket(socketUrl, options);
             Log.d(TAG, "initSocketIO: "+ioSocket.connect());
 
         } catch (URISyntaxException e) {
