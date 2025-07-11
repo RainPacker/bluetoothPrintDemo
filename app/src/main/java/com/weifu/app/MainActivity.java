@@ -1,39 +1,43 @@
 package com.weifu.app;
-import static android.app.PendingIntent.getActivity;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.app.DownloadManager;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.SharedPreferences;
-import android.content.pm.PackageInfo;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
-import android.hardware.fingerprint.FingerprintManager;
+import android.graphics.Paint;
+import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Build;
-//import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.StrictMode;
 import android.provider.MediaStore;
-import android.security.keystore.KeyGenParameterSpec;
-import android.security.keystore.KeyProperties;
+import android.renderscript.RenderScript;
+import android.telephony.TelephonyManager;
+import android.text.format.DateFormat;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
@@ -41,17 +45,20 @@ import android.webkit.DownloadListener;
 import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
-import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.biometric.BiometricManager;
-import androidx.biometric.BiometricPrompt;
-
+import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 
 import com.inuker.bluetooth.library.BluetoothClient;
 import com.mingle.widget.LoadingView;
@@ -62,34 +69,32 @@ import com.symbol.emdk.barcode.Scanner;
 import com.symbol.emdk.barcode.ScannerInfo;
 import com.weifu.action.PermissionsResultAction;
 import com.weifu.app.js.JsBridge;
-import com.weifu.app.utils.KeyUtils;
-import com.weifu.app.utils.NfcUtils;
-import com.weifu.app.utils.SecurityUtils;
+import com.weifu.app.ui.custom.CustomDialog;
+import com.weifu.app.ui.home.AndroidBug5497Workaround;
 import com.weifu.app.version.UpdateManager;
 import com.weifu.utils.PermissionsManager;
+import com.yzq.zxinglibrary.common.Constant;
 
 import net.posprinter.posprinterface.IMyBinder;
 
 import java.io.File;
 import java.io.IOException;
-import java.security.InvalidKeyException;
-import java.security.KeyPairGenerator;
-import java.security.KeyStore;
-import java.security.NoSuchAlgorithmException;
-import java.security.Signature;
-import java.security.SignatureException;
-import java.security.cert.CertificateException;
+import java.io.OutputStream;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
-import java.util.concurrent.Executor;
-
-import javax.crypto.Cipher;
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
+import java.util.Random;
 
 public class MainActivity extends AppCompatActivity /**implements Scanner.DataListener, EMDKManager.EMDKListener**/ {
      private static final int REQUEST_OPEN = 0X01;
-    private static final String  KEY_NAME = "wms_finger" ;
+    private static final String COM_WEIFU_IWMS_FILEPROVIDE = "com.weifu.iwms.fileprovider";
+    private static final String WATERMARK_TEXT = "安全生产";
+    private static final String CHANNEL_ID ="wps" ;
+    private static final int NOTICE_PERMISSION_REQUEST_CODE = 3 ;
+    private static final int NOTIFICATION_ID = 4 ;
 
     private EMDKManager emdkManager = null;
     private BarcodeManager barcodeManager = null;
@@ -100,11 +105,14 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
     String TAG = getClass().getSimpleName();
     // prod
-  //  private static final String LOADRL ="http://10.1.4.138:9001/" ;
-    private static final String LOADRL ="http://10.204.10.28:31338/" ;
-   // private static final String LOADRL ="http://10.94.31.150:31223/" ;
+//    private static final String LOADRL ="http://10.1.4.141:81/" ;
+//    private static final String LOADRL ="http://121.225.97.57:18443/" ;
+    private static final String LOADRL ="http://10.204.10.28:30932/" ;
+//    private static final String LOADRL ="http://10.1.4.145" ;
+//    private static final String LOADRL ="file:///android_asset/test.html" ;
+//    private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
-    private final int PICK_REQUEST = 10001;
+    private final int PICK_REQUEST = 10011;
     ValueCallback<Uri> mFilePathCallback;
     ValueCallback<Uri[]> mFilePathCallbackArray;
     private IMyBinder printerBinder;
@@ -117,15 +125,12 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
     private long exitTime;
 
-
-    // 在 Activity 或 Fragment 中初始化
-    private BiometricPrompt biometricPrompt;
-    private BiometricPrompt.AuthenticationCallback callback;
-    private KeyPairGenerator keyPairGenerator;
-    private KeyStore keyStore;
-    private Cipher cipher;
-    private String currentUserId ="1111";
-    private Executor executor;
+    private String cameraPhotoPath;
+    private ValueCallback<Uri> mUploadCallbackBelow;
+    private Uri imageUri;
+    private ValueCallback<Uri[]> mUploadCallbackAboveL;
+    private boolean isGrant= false;
+    NotificationChannel channel;
 
 
     public final IMyBinder getPrinterBinder() {
@@ -140,26 +145,24 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         return scanner;
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.M)
-    @SuppressLint("SetJavaScriptEnabled")
+    @SuppressLint({"SetJavaScriptEnabled", "UnspecifiedRegisterReceiverFlag"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-
-//        if (checkBiometricSupport()) {
-//            createAndInitializeKey();
-//            initCipher();
-//        }
-     //   XUI.initTheme(this);
-//        this.requestWindowFeature(Window.FEATURE_NO_TITLE);
-//        this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-//                WindowManager.LayoutParams.FLAG_FULLSCREEN);
-  //      this.makeStatusBarTransparent(this);
-     //   setFullscreen(true, true);
-       // setAndroidNativeLightStatusBar(this, true);
-
-
-        getWindow().setNavigationBarColor(Color.parseColor("#004098"));
+        this.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        this.makeStatusBarTransparent(this);
+        setFullscreen(true, true);
+        setAndroidNativeLightStatusBar(this, true);
+//        getWindow().setNavigationBarColor(Color.parseColor("#004098"));
         super.onCreate(savedInstanceState);
+        new Thread(()->{
+            Looper.prepare();
+            updateApk();
+            Looper.loop();
+        }).start();
+
+
        // initReceiver();
      //   getPermission();
         requestPermissions();
@@ -181,38 +184,26 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         //WebView加载页面
         webView = findViewById(R.id.web_view);
         webView.getSettings().setJavaScriptEnabled(true);
-        webView.setWebViewClient(new WebViewClient());
-        webView.setWebChromeClient(new WebChromeClient() {
-            // Andorid 4.1----4.4
-            public void openFileChooser(ValueCallback<Uri> uploadFile, String acceptType, String capture) {
 
-                mFilePathCallback = uploadFile;
-                handle(uploadFile);
-            }
 
-            // for 5.0+
-            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
-                if (mFilePathCallbackArray != null) {
-                    mFilePathCallbackArray.onReceiveValue(null);
-                }
-                mFilePathCallbackArray = filePathCallback;
-                handleup(filePathCallback);
-                return true;
-            }
+        WindowManager windowManager = (WindowManager) this.getSystemService(Context.WINDOW_SERVICE);
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        windowManager.getDefaultDisplay().getMetrics(displayMetrics);
 
-            private void handle(ValueCallback<Uri> uploadFile) {
-                Intent intent = new Intent(Intent.ACTION_PICK);
-                // 设置允许上传的文件类型
-                intent.setType("*/*");
-                startActivityForResult(intent, PICK_REQUEST);
-            }
-
-            private void handleup(ValueCallback<Uri[]> uploadFile) {
-                Intent intent = new Intent(Intent.ACTION_PICK);
-                intent.setType("*/*");
-                startActivityForResult(intent, PICK_REQUEST);
-            }
-        });
+        int width = displayMetrics.widthPixels;
+        int height = displayMetrics.heightPixels;
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+//        TelephonyManager telephonyManager = (TelephonyManager) this.getSystemService(Context.TELEPHONY_SERVICE);
+//        if (telephonyManager.getPhoneType() == TelephonyManager.PHONE_TYPE_NONE) {
+//            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+//        } else {
+//            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+//        }
+        Log.w(TAG, "onCreate: "+ width+"::"+height);
+//        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        // 横屏
+        webView.getSettings().setLoadWithOverviewMode(true);
+        webView.getSettings().setUseWideViewPort(true);
 
         // wevView监听 H5 页面的下载事件
         webView.setDownloadListener(new DownloadListener() {
@@ -258,22 +249,9 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         });
 
         //该方法解决的问题是打开浏览器不调用系统浏览器，直接用 webView 打开
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                // 解决webview cangoBack() 失效的问题
-                if (Build.VERSION.SDK_INT < 26) {
-                    view.loadUrl(url);
-                    return true;
-                }
-
-                return false;
-            }
-        });
         jsBridge = new JsBridge(this);
         // 注册配置文件 斑马专用
         jsBridge.createProfile();
-        jsBridge.startFingerprintAuthentication();
         // 注册广播
         IntentFilter actionFilters = new IntentFilter();
         actionFilters.addAction(JsBridge.ACTION_IDATA_SCANRESULT);
@@ -281,7 +259,11 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         actionFilters.addAction(Intent.ACTION_SCREEN_ON);
         actionFilters.addAction( BluetoothAdapter.ACTION_STATE_CHANGED);
         actionFilters.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
-        registerReceiver(jsBridge,actionFilters);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            registerReceiver(jsBridge,actionFilters, Context.RECEIVER_EXPORTED);
+        }else {
+            registerReceiver(jsBridge,actionFilters);
+        }
 
         webView.addJavascriptInterface(jsBridge, "JsBridge");
 
@@ -309,47 +291,53 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         webView.getSettings().setAllowFileAccess(true);
         webView.getSettings().getAllowUniversalAccessFromFileURLs();
         webView.getSettings().getAllowFileAccessFromFileURLs();
+        // 禁用缓存
+        webView.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
+        String userAgentString = webView.getSettings().getUserAgentString();
+                Log.d("userAgent",userAgentString);
+
+//        webView.getSettings().setAppCacheEnabled(false);
        // webView.setOnKeyListener((view, keyCode,  event)-> this.onKeyDown(keyCode,event));
-        updateApk();
-        try {
-            PackageManager pm = this.getPackageManager();
-            PackageInfo info = pm.getPackageInfo("com.android.webview", 0);
-            Log.d(TAG, "onCreate:webview version: "+info.versionName);
-        } catch (PackageManager.NameNotFoundException e) {
-            Log.e("WebViewVersionFetcher", "Package not found: " + e.getMessage());
-        }
+//        updateApk();
+//        showInfoDialog("","xxx","取消",null,"ok",null);
+        AndroidBug5497Workaround.assistActivity(this);
+        float navigationBarHeight = getNavigationBarHeight();
 
-      // nfc 初始化
+        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        layoutParams.bottomMargin=(int)getNavigationBarHeight();
+        webView.setLayoutParams(layoutParams);
 
-        try {
-            NfcUtils.NfcInit(this);
-        } catch (Exception e) {
-           Log.e("nfcinit",e.getMessage());
-        }
+        createNoticeChannel();
     }
 
     @Override
     //设置回退页面
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         Log.d(TAG, "canGoBack: "+webView.canGoBack());
+        if((keyCode == KeyEvent.KEYCODE_BACK) && ! webView.canGoBack()){
+
+            if ((System.currentTimeMillis() - exitTime) > 2000) {
+                Toast.makeText(getApplicationContext(), "再按一次退出程序", Toast.LENGTH_SHORT).show();
+                exitTime = System.currentTimeMillis();
+            } else {
+                new CustomDialog.Builder(this).setTitle("提示").setInfo("确定要退出吗？").setButtonCancel("取消", new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+
+                    }
+                }).setButtonConfirm("确定", new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        System.exit(0);
+                    }
+                }).create().show();
+            }
+        }
         if ((keyCode == KeyEvent.KEYCODE_BACK) && webView.canGoBack()) {
             webView.goBack();
             return true;
         }else {
-            if((keyCode == KeyEvent.KEYCODE_BACK) && ! webView.canGoBack()){
 
-                if ((System.currentTimeMillis() - exitTime) > 2000) {
-                    Toast.makeText(getApplicationContext(), "再按一次退出程序", Toast.LENGTH_SHORT).show();
-                    exitTime = System.currentTimeMillis();
-                } else {
-                    new AlertDialog.Builder(this).setTitle("提示").setMessage("确定要退出吗？").setPositiveButton("取消", null).setNegativeButton("确定", new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialog, int which) {
-                            System.exit(0);
-                        }
-                    }).show();
-                }
-            }
 
 
 
@@ -374,31 +362,115 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     }
 
 
+    @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
         if (requestCode == PICK_REQUEST) {
-            if (null != data) {
-                Uri uri = data.getData();
-                handleCallback(uri);
+            // 经过上边(1)、(2)两个赋值操作，此处即可根据其值是否为空来决定采用哪种处理方法
+            if (mUploadCallbackBelow != null) {
+                chooseBelow(resultCode, data);
+            } else if (mUploadCallbackAboveL != null) {
+                chooseAbove(resultCode, data);
             } else {
-                // 取消了照片选取的时候调用
-                handleCallback(null);
+                Toast.makeText(this, "发生错误", Toast.LENGTH_SHORT).show();
             }
-        } else {
-            // 取消了照片选取的时候调用
-            handleCallback(null);
         }
-        if(REQUEST_OPEN==requestCode){
-            if(resultCode==RESULT_CANCELED){
-                Log.i(TAG, "onActivityResult: 用户拒绝请求");
-            }else{
-                Log.i(TAG, "onActivityResult: 用户允许请求");
-                getPermission();
+
+        //  扫一扫
+        if (JsBridge.SCAN_QR_REQUEST_CODE == requestCode) {
+            if (resultCode == RESULT_OK) {
+                if (data != null) {
+                    String content = data.getStringExtra(Constant.CODED_CONTENT);
+                    Log.i(TAG, "onActivityResult:扫码内容："+content);
+                    String method = "javascript:qrResult('" + content + "')";
+                    // 这里可能 出现乱码
+                 //   webView.loadUrl(method);
+                    webView.evaluateJavascript(method,null);
+                    String id = "wps";
+                    String name = "wpsChann";
+                //   this.sendClickableNotification(this,new Intent(this,MainActivity.class),content);
+                }
+
             }
         }
     }
 
+
+    /**
+     * Android API < 21(Android 5.0)版本的回调处理
+     * @param resultCode 选取文件或拍照的返回码
+     * @param data 选取文件或拍照的返回结果
+     */
+    private void chooseBelow(int resultCode, Intent data) {
+        Log.e("WangJ", "返回调用方法--chooseBelow");
+
+        if (RESULT_OK == resultCode) {
+            updatePhotos();
+
+            if (data != null) {
+                // 这里是针对文件路径处理
+                Uri uri = data.getData();
+                if (uri != null) {
+                    Log.e("WangJ", "系统返回URI：" + uri.toString());
+                    mUploadCallbackBelow.onReceiveValue(uri);
+                } else {
+                    mUploadCallbackBelow.onReceiveValue(null);
+                }
+            } else {
+                // 以指定图像存储路径的方式调起相机，成功后返回data为空
+                Log.e("WangJ", "自定义结果：" + imageUri.toString());
+                mUploadCallbackBelow.onReceiveValue(imageUri);
+            }
+        } else {
+            mUploadCallbackBelow.onReceiveValue(null);
+        }
+        mUploadCallbackBelow = null;
+    }
+
+    /**
+     * Android API >= 21(Android 5.0) 版本的回调处理
+     * @param resultCode 选取文件或拍照的返回码
+     * @param data 选取文件或拍照的返回结果
+     */
+    private void chooseAbove(int resultCode, Intent data) {
+        Log.e("WangJ", "返回调用方法--chooseAbove");
+
+        if (RESULT_OK == resultCode) {
+            updatePhotos();
+
+            if (data != null) {
+                // 这里是针对从文件中选图片的处理
+                Uri[] results;
+                Uri uriData = data.getData();
+                if (uriData != null) {
+                    results = new Uri[]{uriData};
+                    for (Uri uri : results) {
+                        addWatermarkToImage(uri);
+                        Log.e("WangJ", "系统返回URI：" + uri.toString());
+                    }
+
+                    mUploadCallbackAboveL.onReceiveValue(results);
+                } else {
+                    mUploadCallbackAboveL.onReceiveValue(null);
+                }
+            } else {
+                Log.e("WangJ", "自定义结果：" + imageUri.toString());
+                addWatermarkToImage(imageUri);
+                mUploadCallbackAboveL.onReceiveValue(new Uri[]{imageUri});
+            }
+        } else {
+            mUploadCallbackAboveL.onReceiveValue(null);
+        }
+        mUploadCallbackAboveL = null;
+    }
+
+    private void updatePhotos() {
+        // 该广播即使多发（即选取照片成功时也发送）也没有关系，只是唤醒系统刷新媒体文件
+        Intent intent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+        intent.setData(imageUri);
+        sendBroadcast(intent);
+    }
     /**
      * 处理WebView的回调
      *
@@ -468,64 +540,9 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     @Override
     protected void onResume() {
         super.onResume();
-        // The application is in foreground
-//        if (emdkManager != null) {
-//            // Acquire the barcode manager resources
-//            initBarcodeManager();
-//            // Enumerate scanner devices
-//            enumerateScannerDevices();
-//            // Initialize scanner
-//            initScanner();
-//        }
+
     }
 
-/*    private void initScanner() {
-        if (scanner == null) {
-            if ((deviceList != null) && (deviceList.size() != 0)) {
-                if (barcodeManager != null)
-                    scanner = barcodeManager.getDevice(deviceList.get(scannerIndex));
-            }
-            else {
-                Log.d(TAG, "Failed to get the specified scanner device! Please close and restart the application.");
-                return;
-            }
-            if (scanner != null) {
-                scanner.addDataListener(this);
-              //  scanner.addStatusListener(this);
-                try {
-                    scanner.enable();
-                } catch (ScannerException e) {
-
-                    deInitScanner();
-                }
-            }else{
-                Log.d(TAG,"Failed to initialize the scanner device.");
-            }
-        }
-    }*/
-/*    private void deInitScanner() {
-        if (scanner != null) {
-            try{
-                scanner.disable();
-            } catch (Exception e) {
-                Log.d(TAG,e.getMessage());
-            }
-
-            try {
-                scanner.removeDataListener(this);
-              //  scanner.removeStatusListener(this);
-            } catch (Exception e) {
-                Log.d(TAG,e.getMessage());
-            }
-
-            try{
-                scanner.release();
-            } catch (Exception e) {
-                Log.d(TAG,e.getMessage());
-            }
-            scanner = null;
-        }
-    }*/
 
     private void enumerateScannerDevices() {
         if (barcodeManager != null) {
@@ -630,8 +647,182 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         return this.mClient;
    }
     class MyClient extends WebViewClient {
+        @Override
+        public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+            // 显示自定义错误页面
+            webView.clearHistory();
+            webView.loadUrl("file:///android_asset/404.html");
+            webView.clearHistory();
+         /*   CustomDialog.Builder	 builder = new CustomDialog.Builder(MainActivity.this);
+            builder.setTitle("提示");
+            builder.setWarning("网络出现错误，请检查网络或联系管理员");
+            builder.setButtonConfirm("确定", new View.OnClickListener() {
+
+                @Override
+                public void onClick(View customDgv) {
+                    System.exit(0);
+                }
+            });
+            CustomDialog customDg =	builder.create();
+            customDg.show();*/
+
+        }
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView view, String url) {
+            // 解决webview cangoBack() 失效的问题
+            if (Build.VERSION.SDK_INT < 26) {
+                view.loadUrl(url);
+                return true;
+            }
+
+            return false;
+        }
+
+        @Override
+        public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse errorResponse) {
+            // 显示自定义错误页面
+//            webView.loadUrl("file:///android_asset/404.html");
+//            CustomDialog.Builder	 builder = new CustomDialog.Builder(MainActivity.this);
+//            builder.setTitle("提示");
+//            builder.setWarning("网络出现错误，请检查网络或联系管理员");
+//            builder.setButtonConfirm("确定", new View.OnClickListener() {
+//
+//                @Override
+//                public void onClick(View customDgv) {
+//                    System.exit(0);
+//                }
+//            });
+//            CustomDialog customDg =	builder.create();
+//            customDg.show();
+        }
     }
     class MyWebChromeClient extends WebChromeClient {
+        /**
+         * 8(Android 2.2) <= API <= 10(Android 2.3)回调此方法
+         */
+        private void openFileChooser(android.webkit.ValueCallback<Uri> uploadMsg) {
+            Log.e("WangJ", "运行方法 openFileChooser-1");
+            // (2)该方法回调时说明版本API < 21，此时将结果赋值给 mUploadCallbackBelow，使之 != null
+            mUploadCallbackBelow = uploadMsg;
+            takePhoto();
+        }
+
+        /**
+         * 11(Android 3.0) <= API <= 15(Android 4.0.3)回调此方法
+         */
+        public void openFileChooser(android.webkit.ValueCallback<Uri> uploadMsg, String acceptType) {
+            Log.e("WangJ", "运行方法 openFileChooser-2 (acceptType: " + acceptType + ")");
+            // 这里我们就不区分input的参数了，直接用拍照
+            openFileChooser(uploadMsg);
+        }
+
+        /**
+         * 16(Android 4.1.2) <= API <= 20(Android 4.4W.2)回调此方法
+         */
+        public void openFileChooser(android.webkit.ValueCallback<Uri> uploadMsg, String acceptType, String capture) {
+            Log.e("WangJ", "运行方法 openFileChooser-3 (acceptType: " + acceptType + "; capture: " + capture + ")");
+            // 这里我们就不区分input的参数了，直接用拍照
+            openFileChooser(uploadMsg);
+        }
+
+        /**
+         * API >= 21(Android 5.0.1)回调此方法
+         */
+        @Override
+        public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> valueCallback, FileChooserParams fileChooserParams) {
+            Log.e("WangJ", "运行方法 onShowFileChooser");
+            // (1)该方法回调时说明版本API >= 21，此时将结果赋值给 mUploadCallbackAboveL，使之 != null
+            mUploadCallbackAboveL  = valueCallback;
+            takePhoto();
+            return true;
+        }
+
+        /**
+         * 调用相机
+         */
+        private void takePhoto() {
+            // 指定拍照存储位置的方式调起相机
+            String filePath =
+                     Environment.DIRECTORY_DOWNLOADS;
+            String fileName = "IMG_" + DateFormat.format("yyyyMMdd_hhmmss", Calendar.getInstance(Locale.CHINA)) + ".jpg";
+
+
+            if (Build.VERSION.SDK_INT >= 24) {
+                imageUri = FileProvider.getUriForFile(MainActivity.this, COM_WEIFU_IWMS_FILEPROVIDE ,new File(getExternalFilesDir(filePath),fileName));
+            }else {
+                imageUri = Uri.fromFile(new File(filePath + fileName));
+            }
+
+
+
+//        Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+//        intent.putExtra(MediaStore.EXTRA_OUTPUT, imageUri);
+//        startActivityForResult(intent, REQUEST_CODE);
+
+            // 选择图片（不包括相机拍照）,则不用成功后发刷新图库的广播
+//        Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+//        i.addCategory(Intent.CATEGORY_OPENABLE);
+//        i.setType("image/*");
+//        startActivityForResult(Intent.createChooser(i, "Image Chooser"), REQUEST_CODE);
+
+            Intent captureIntent = new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
+            captureIntent.putExtra(MediaStore.EXTRA_OUTPUT, imageUri);
+//
+//            Intent Photo = new Intent(Intent.ACTION_PICK,
+//                    android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+//
+//            Intent chooserIntent = Intent.createChooser(Photo, "Image Chooser");
+//            chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, new Parcelable[]{captureIntent});
+
+            startActivityForResult(captureIntent, PICK_REQUEST);
+        }
+
+
+
+        // for 5.0+
+/*        public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+            if (mFilePathCallbackArray != null) {
+                mFilePathCallbackArray.onReceiveValue(null);
+            }
+            mFilePathCallbackArray = filePathCallback;
+            handleup(filePathCallback);
+            return true;
+        }*/
+
+//        private void handle(ValueCallback<Uri> uploadFile) {
+//            Intent intent = new Intent(Intent.ACTION_PICK);
+//            // 设置允许上传的文件类型
+//            intent.setType("*/*");
+//            startActivityForResult(intent, PICK_REQUEST);
+//        }
+
+/*        private void handleup(ValueCallback<Uri[]> uploadFile) {
+
+//            mFilePathCallbackArray = filePath;
+
+            Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+
+//  选择
+//            Intent contentSelectionIntent = new Intent(Intent.ACTION_GET_CONTENT);
+//            contentSelectionIntent.addCategory(Intent.CATEGORY_OPENABLE);
+//            contentSelectionIntent.setType("image/*");
+//
+//            Intent[] intentArray;
+//            if (takePictureIntent != null) {
+//                intentArray = new Intent[]{takePictureIntent};
+//            } else {
+//                intentArray = new Intent[0];
+//            }
+//
+//            Intent chooserIntent = new Intent(Intent.ACTION_CHOOSER);
+//            chooserIntent.putExtra(Intent.EXTRA_INTENT, contentSelectionIntent);
+//            chooserIntent.putExtra(Intent.EXTRA_TITLE, "Image Chooser");
+//            chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, intentArray);
+
+            startActivityForResult(takePictureIntent, PICK_REQUEST);
+
+        }*/
+
         // 监听网页进度 newProgress进度值在0-100
         @Override
         public void onProgressChanged(WebView view, int newProgress) {
@@ -647,6 +838,59 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
             progressBar.setProgress(newProgress);
             // 如果想展示加载动画，则增加一个drawable布局后，在onCreate时展示，在progress=100时View.GONE即可
         }
+    }
+
+    private void addWatermarkToImage(Uri imageUri) {
+        try {
+
+            Bitmap originalBitmap = MediaStore.Images.Media.getBitmap(this.getContentResolver(), imageUri);
+            originalBitmap = originalBitmap.copy(Bitmap.Config.ARGB_8888, true);
+            long currentTimeMillis = System.currentTimeMillis();
+
+            // 创建一个SimpleDateFormat实例，并设置日期/时间格式
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+
+            // 根据当前时间毫秒值创建Date对象
+            Date currentDate = new Date(currentTimeMillis);
+
+            // 将Date对象格式化为字符串
+            String formattedTime = sdf.format(currentDate);
+
+            // 添加文字水印
+            Bitmap watermarkedBitmap = addTextWatermark(originalBitmap, WATERMARK_TEXT+formattedTime);
+
+            // 保存带有水印的图片
+            saveWatermarkedImage(watermarkedBitmap, imageUri);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void saveWatermarkedImage(Bitmap bitmap, Uri destinationUri) {
+        try (OutputStream out = getContentResolver().openOutputStream(destinationUri)) {
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    private Bitmap addTextWatermark(Bitmap src, String watermarkText) {
+        Canvas canvas = new Canvas(src);
+        Paint paint = new Paint();
+        paint.setColor(Color.BLUE);
+        paint.setTextSize(100);
+        paint.setAlpha(128); // 设置透明度
+
+        Rect bounds = new Rect();
+        paint.getTextBounds(watermarkText, 0, watermarkText.length(), bounds);
+
+        int x = src.getWidth() - bounds.width() - 20;
+        int y = src.getHeight() - bounds.height() - 20;
+
+        canvas.drawText(watermarkText, x, y, paint);
+
+        return src;
     }
 
     private void requestPermissions() {
@@ -750,181 +994,163 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     }
 
 
-//    public initBiometric() throws Exception {
-//        // 初始化组件
-//        Executor executor = new MainThreadExecutor();
-//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-//            callback = new BiometricPrompt.AuthenticationCallback() {
-//                @Override
-//                public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
-//                    super.onAuthenticationSucceeded(result);
-//                    // 认证成功后的操作
-//                }
-//
-//                @Override
-//                public void onAuthenticationError(int errorCode, CharSequence errString) {
-//                    super.onAuthenticationError(errorCode, errString);
-//                    // 认证失败或错误
-//                }
-//
-//                @Override
-//                public void onAuthenticationFailed() {
-//                    super.onAuthenticationFailed();
-//                    // 认证失败
-//                }
-//            };
-//        }
-//
-//        // 创建 BiometricPrompt 对象
-//        biometricPrompt = new BiometricPrompt(this, executor, callback);
-//
-//        // 创建密钥对
-//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-//            keyPairGenerator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
-//            KeyGenParameterSpec spec = new KeyGenParameterSpec.Builder("myKey", KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
-//                    .setBlockModes(KeyProperties.BLOCK_MODE_CBC)
-//                    .setUserAuthenticationRequired(true)
-//                    .build();
-//            keyPairGenerator.initialize(spec);
-//        }
-//
-//        // 启动指纹认证
-//        promptForBiometric();
-//    }
-//    private void promptForBiometric() {
-//        BiometricPrompt  promptInfo = new BiometricPrompt.Builder()
-//                .setTitle("Biometric login for my app")
-//                .setNegativeButtonText("Cancel")
-//                .build();
-//
-//        biometricPrompt.authenticate(promptInfo);
-//    }
+    protected void showInfoDialog(String waring, String info, String cancelText, View.OnClickListener cancelOnClick, String confirmText, View.OnClickListener confirmOnClick) {
+        CustomDialog.Builder builder = new CustomDialog.Builder(this);
+        builder.setTitle("提示");
+        builder.setWarning(waring);
+        builder.setInfo(info);
+        builder.setButtonCancel(cancelText, cancelOnClick);
+        builder.setButtonConfirm(confirmText, confirmOnClick);
 
-    public boolean isFingerprintAuthAvailable() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            FingerprintManager fingerprintManager = (FingerprintManager) getSystemService(FINGERPRINT_SERVICE);
-            return fingerprintManager.isHardwareDetected() && fingerprintManager.hasEnrolledFingerprints();
+        CustomDialog customDialog = builder.create();
+        customDialog.show();
+    }
+
+
+    public void sendClickableNotification(Context context, Intent intent,String content) {
+        // 创建通知渠道 (对于Android Oreo及以上版本)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "My Notifications", NotificationManager.IMPORTANCE_DEFAULT);
+            channel.setDescription("Description of my notifications");
+            channel.enableLights(true);
+            channel.setLightColor(Color.BLUE);
+            channel.enableVibration(true);
+            NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            notificationManager.createNotificationChannel(channel);
         }
-        return false;
+
+        // 创建意图 PendingIntent，用于点击通知后启动目标Activity
+        PendingIntent contentIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+
+        // 创建通知构建器
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.logo) // 设置小图标
+                .setContentTitle("安全生产") // 设置通知标题
+                .setContentText(content) // 设置通知内容
+                .setAutoCancel(false)
+                .setGroup("wps")
+                .setChannelId(CHANNEL_ID)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT) // 设置优先级
+                .setContentIntent(contentIntent); // 设置点击后的意图
+
+        // 获取通知管理器实例
+        NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+
+        // 发送通知
+        int notificationId = new Random().nextInt(); // 可以自定义通知ID
+        Log.d(TAG, "sendClickableNotification: "+notificationId);
+        manager.notify(notificationId, builder.build());
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.P)
-    public void startFingerprintAuthentication() {
-        MainActivity activity = this;
-        androidx.biometric.BiometricPrompt biometricPrompt = new androidx.biometric.BiometricPrompt(activity, new androidx.biometric.BiometricPrompt.AuthenticationCallback() {
-            @Override
-            public void onAuthenticationSucceeded(androidx.biometric.BiometricPrompt.AuthenticationResult result) {
-                super.onAuthenticationSucceeded(result);
-                androidx.biometric.BiometricPrompt.CryptoObject cryptoObject = result.getCryptoObject();
-                Signature signature = cryptoObject.getSignature();
-
-                try {
-                    byte[] fingerprintData = signature.sign();
-                    Log.d(TAG, "onAuthenticationSucceeded: "+new String(fingerprintData));
-                } catch (SignatureException e) {
-                    throw new RuntimeException(e);
-                }
-                Log.d(TAG, "onAuthenticationSucceeded: "+   result.hashCode());
-                activity.runOnUiThread(() -> {
-                    // 将错误信息传递给WebView中的JavaScript代码
-                    String js = "javascript:handleFingerprintResult(true, '" + result + "')";
-                    activity.runOnUiThread(() ->activity.getWebView() .loadUrl(js));
-                });
-                // 处理成功认证
-            }
-
-            @Override
-            public void onAuthenticationFailed() {
-                super.onAuthenticationFailed();
-                activity.runOnUiThread(() -> {
-                    // 将错误信息传递给WebView中的JavaScript代码
-                    String js = "javascript:handleFingerprintResult(false)";
-                    activity.runOnUiThread(() ->activity.getWebView() .loadUrl(js));
-                });
-                // 处理失败认证
-            }
-        });
-//        // 启动指纹认证流程
-//        BiometricPrompt biometricPrompt = new BiometricPrompt((FragmentActivity) activity,
-//                ContextCompat.getMainExecutor(activity),
-//                new BiometricPrompt.AuthenticationCallback() {
-//                    @Override
-//                    public void onAuthenticationError(int errorCode, CharSequence errString) {
-//                        super.onAuthenticationError(errorCode, errString);
-//                        activity.runOnUiThread(() -> {
-//                            // 将错误信息传递给WebView中的JavaScript代码
-//                            String js = "javascript:handleFingerprintResult(false, '" + errString + "')";
-//                             activity.runOnUiThread(() ->activity.getWebView() .loadUrl(js));
-//                        });
-//                    }
-//
-//                    @Override
-//                    public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
-//                        super.onAuthenticationSucceeded(result);
-//                        activity.runOnUiThread(() -> {
-//                            // 认证成功后可以生成JWT或其他操作
-//                            String jwtToken = generateJwtToken(); // 假设有一个方法生成JWT
-//                            // 将成功信息传递给WebView中的JavaScript代码
-//                            String js = "javascript:handleFingerprintResult(true, 'Authentication succeeded')";
-//                          activity.runOnUiThread(() ->  activity.getWebView().loadUrl(js));
-//                        });
-//                    }
-//
-//                    @Override
-//                    public void onAuthenticationFailed() {
-//                        super.onAuthenticationFailed();
-//                        activity.runOnUiThread(() -> {
-//                            // 将失败信息传递给WebView中的JavaScript代码
-//                            String js = "javascript:handleFingerprintResult(false, 'Authentication failed')";
-//                             activity.runOnUiThread(() ->  activity.getWebView().loadUrl(js));
-//                        });
-//                    }
-//                });
-
-
-        // 设置提示信息
-        androidx.biometric.BiometricPrompt.PromptInfo promptInfo = new androidx.biometric.BiometricPrompt.PromptInfo.Builder()
-                .setTitle("Fingerprint Login")
-                .setSubtitle("Please use your fingerprint to authenticate")
-                .setDescription("Enhance account security")
-                .setNegativeButtonText("Cancel")
-                .build();
-
-        // 显示指纹认证对话框
-        biometricPrompt.authenticate(promptInfo,new androidx.biometric.BiometricPrompt.CryptoObject(cipher));
-    }
-
-
-
-
-
-    @RequiresApi(api = Build.VERSION_CODES.M)
-    public void generateOrRetrieveKey(String keyName) throws Exception {
-        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
-        keyStore.load(null);
-
-        if (!keyStore.containsAlias(keyName)) {
-            KeyGenerator keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
-            keyGenerator.init(
-                    new KeyGenParameterSpec.Builder(keyName,
-                            KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
-                            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                            .setUserAuthenticationRequired(true)
-                            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                            .build());
-            keyGenerator.generateKey();
+    public float getNavigationBarHeight() {
+        float result = 0;
+        int resourceId = getResources().
+                getIdentifier("navigation_bar_height", "dimen", "android");
+        if (resourceId > 0) {
+            result = getResources().getDimension(resourceId);
         }
+        return result;
     }
 
 
+    /**
+     * 创建通知渠道
+     */
+    public  void createNoticeChannel(){
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+
+              if(channel == null){
+                  channel = new NotificationChannel(CHANNEL_ID, "WPS", NotificationManager.IMPORTANCE_HIGH);
+                  channel.setDescription("消息通知");
+                  channel.enableLights(true);
+                  channel.setLightColor(Color.BLUE);
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                      channel.setAllowBubbles(true);
+                  }
+                  channel.enableVibration(true);
+                  NotificationManager notificationManager = (NotificationManager) this.getSystemService(Context.NOTIFICATION_SERVICE);
+                  notificationManager.createNotificationChannel(channel);
+              }
+
+          }
+      }
 
 
+    /**
+     * 发送可点击的消息通知
+     *
+     * @param context
+     * @param needSound
+     * @param content
+     */
+    public void sendClickableNotification(Context context,Boolean needSound, String content,int max, int progress,PendingIntent intent) {
+        if (!isGrant) {
+            requestNotificationPermission();
+        }
+        // 创建通知渠道 (对于Android Oreo及以上版本)
 
 
+//        // 创建意图 PendingIntent，用于点击通知后启动目标Activity
+//        PendingIntent contentIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
 
+        // 创建通知构建器
+        NotificationCompat.Builder  builder = new NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.logo) // 设置小图标
+                .setContentTitle("WPS") // 设置通知标题
+                .setContentText(content) // 设置通知内容
+                .setAutoCancel(false)
+                .setProgress(max, progress, false)
+                .setGroup("wps")
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setContentIntent(intent)
+                .setChannelId(CHANNEL_ID).setOnlyAlertOnce(true)
+        ; // 设置点击后的意图
+    if(needSound) {
+        NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        manager.cancel(NOTIFICATION_ID);
+        manager.notify(NOTIFICATION_ID+1, builder.build());
+    }else {
+        NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        manager.notify(NOTIFICATION_ID, builder.build());
+    }
+        // 获取通知管理器实例
 
+    }
 
+    /**
+     * 动态申请 通知权限
+     */
+    public void requestNotificationPermission() {
+        // Java代码动态申请POST_NOTIFICATIONS权限
+        if (Build.VERSION.SDK_INT >= 33) {
+            int checkPermission =
+                    ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS);
+            if (checkPermission != PackageManager.PERMISSION_GRANTED) {
+                //动态申请
+                ActivityCompat.requestPermissions((Activity) this, new String[]{
+                        Manifest.permission.POST_NOTIFICATIONS}, NOTICE_PERMISSION_REQUEST_CODE);
+            } else {
+                isGrant = true;
+                Log.d(TAG, "requestNotificationPermission: 已经授权");
+            }
+        } else {
+            int checkPermission =
+                    ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_NOTIFICATION_POLICY);
+            if (checkPermission != PackageManager.PERMISSION_GRANTED) {
+                //动态申请
+                ActivityCompat.requestPermissions((Activity) this, new String[]{
+                        Manifest.permission.ACCESS_NOTIFICATION_POLICY}, NOTICE_PERMISSION_REQUEST_CODE);
+            } else {
+                isGrant = true;
+                Log.d(TAG, "requestNotificationPermission: 已经授权");
+            }
+        }
 
-
+    }
 
 }
+
+
+
+
+

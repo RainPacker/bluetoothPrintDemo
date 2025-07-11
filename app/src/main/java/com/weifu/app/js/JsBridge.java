@@ -55,6 +55,9 @@ import com.zebra.printer.sdk.ZebraPrinter;
 
 import net.posprinter.posprinterface.TaskCallback;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
@@ -1012,13 +1015,7 @@ private  static  class PrintWorkHandler extends Handler {
 
 
 
-    @JavascriptInterface
-    public void startFingerprintAuthentication() {
-         this.activity.runOnUiThread(()->{
-             this.activity.startFingerprintAuthentication();
-         });
 
-    }
 
     private String generateJwtToken() {
         // 这里假设有一个方法可以根据用户信息生成JWT
@@ -1106,17 +1103,24 @@ private  static  class PrintWorkHandler extends Handler {
     }
 
     /**
+     * socket.io 注册并登录
+     */
+    @JavascriptInterface
+    public void login(String userId,String token){
+         initSocketIO(userId,token);
+    }
+    /**
      * 初始化socket
      *
       */
 
-    public  void initSocketIO (){
+    public  void initSocketIO (String userId,String token){
         try {
             IO.Options options = new IO.Options();
             options.path = "/socket.io";
             options.reconnection= true;
             Map<String,String> auth = new HashMap<>();
-            auth.put("andriod","1");
+            auth.put("andriod","100");
             options.transports = new String[] { "websocket","polling" }; // 禁用Polling
             options.auth = auth;
             options.upgrade= true;
@@ -1127,21 +1131,30 @@ private  static  class PrintWorkHandler extends Handler {
             Log.e(TAG, "initSocketIO: ",e );
             this.showToast("服务器连接异常");
         }
-        setupSocketListeners();
+        setupSocketListeners(userId,token);
         ioSocket.connect();
         Log.d(TAG, "initSocketIO: "+ioSocket.connected());
 
     }
 
-    private void setupSocketListeners() {
+    private void setupSocketListeners(String userId,String token) {
         ioSocket.on(Socket.EVENT_CONNECT, args ->{ Log.d(TAG, "Connected to server");
             ttsUtils.setLanguage(Locale.CHINESE);
             ttsUtils.setSpeechRate(0.9f);
             ttsUtils.setPitch(1.1f);
             ttsUtils.addToQueue("服务连接成功");
+            JSONObject loginInfo = new JSONObject();
+            try {
+                loginInfo.put("userId",userId);
+                loginInfo.put("token",token);
+            } catch (JSONException e) {
+                throw new RuntimeException(e);
+            }
+
+            ioSocket.emit("login",loginInfo);
         });
 
-        ioSocket.on("chat", args -> {
+        ioSocket.on("msg", args -> {
             String message = (String) args[0];
             Log.d(TAG, "收到消息: " + message);
 

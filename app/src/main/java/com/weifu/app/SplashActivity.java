@@ -1,23 +1,32 @@
 package com.weifu.app;
 
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
+import android.content.res.Configuration;
 import android.graphics.Color;
+import android.graphics.drawable.Drawable;
 import android.os.Handler;
 import android.os.Bundle;
 import android.os.Looper;
+import android.telephony.TelephonyManager;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.MotionEvent;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.LinearInterpolator;
 import android.widget.ImageView;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+
 import com.bumptech.glide.Glide;
-import com.weifu.action.PermissionsResultAction;
-import com.weifu.app.utils.KeyUtils;
-import com.weifu.utils.PermissionsManager;
 
 import java.util.Objects;
 
@@ -29,6 +38,7 @@ public class SplashActivity extends AppCompatActivity {
     Handler handler =new Handler();
  
     boolean isStartMainActivity = false;
+    ObjectAnimator revealAnimator;
  
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -37,6 +47,22 @@ public class SplashActivity extends AppCompatActivity {
 //            return;
 //        }
 
+        WindowManager windowManager = (WindowManager) this.getSystemService(Context.WINDOW_SERVICE);
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        windowManager.getDefaultDisplay().getMetrics(displayMetrics);
+
+        int width = displayMetrics.widthPixels;
+        int height = displayMetrics.heightPixels;
+        TelephonyManager telephonyManager = (TelephonyManager) this.getSystemService(Context.TELEPHONY_SERVICE);
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+//        if (telephonyManager.getPhoneType() == TelephonyManager.PHONE_TYPE_NONE) {
+//            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+//        } else {
+//            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+//        }
+
+
+        Log.w(TAG, "onCreate: "+ width+"::"+height);
 
         getWindow().setNavigationBarColor(Color.WHITE);
 
@@ -55,7 +81,6 @@ public class SplashActivity extends AppCompatActivity {
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
-
                 startMainActivity();
                 Log.d(TAG, "run: 当前线程为："+Thread.currentThread().getName());
             }
