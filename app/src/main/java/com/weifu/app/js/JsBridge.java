@@ -1052,10 +1052,10 @@ private  static  class PrintWorkHandler extends Handler {
      * @param content
      */
    @JavascriptInterface
-   public  void sendMessageNotice(String content) {
+   public  void sendMessageNotice(String title,String content) {
 //       this.sendClickableNotification(this.activity,new Intent(this.activity,MainActivity.class),content);
        NotificationUtil.createNotificationChannel(this.activity);
-       NotificationUtil.showNotification(this.activity,content);
+       NotificationUtil.showNotification(this.activity,title,content);
    }
 
     /**
@@ -1178,7 +1178,7 @@ private  static  class PrintWorkHandler extends Handler {
                 throw new RuntimeException(e);
             }
 
-            ioSocket.emit("login",loginInfo);
+            ioSocket.emit("login",loginInfo.toString());
         });
 
         ioSocket.on("msg", args -> {
@@ -1196,15 +1196,16 @@ private  static  class PrintWorkHandler extends Handler {
             ttsUtils.addToQueue(message);
 
             // 发送通知
-            NotificationUtil.showNotification(activity, message);
+            NotificationUtil.showNotification(activity,"通知", message);
         });
         ioSocket.on(Socket.EVENT_CONNECT_ERROR, args -> Log.d(TAG, args[0].toString()));
 
         ioSocket.on(Socket.EVENT_DISCONNECT, args ->{ Log.d(TAG, "Disconnected from server");
-            ttsUtils.setLanguage(Locale.CHINESE);
-            ttsUtils.setSpeechRate(0.9f);
-            ttsUtils.setPitch(1.1f);
-            ttsUtils.addToQueue("连接已经断开");
+            this.showToast("通知服务连接已经断开！");
+//            ttsUtils.setLanguage(Locale.CHINESE);
+//            ttsUtils.setSpeechRate(0.9f);
+//            ttsUtils.setPitch(1.1f);
+//            ttsUtils.addToQueue("连接已经断开");
         });
     }
 

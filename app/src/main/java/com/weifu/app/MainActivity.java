@@ -106,7 +106,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     String TAG = getClass().getSimpleName();
     // prod
 //    private static final String LOADRL ="http://10.1.4.141:81/" ;
-    private static final String LOADRL ="http://10.204.10.28:31338//" ;
+    private static final String LOADRL ="http://10.13.10.42" ;
 //    private static final String LOADRL ="http://10.1.77.103/" ;
 
 //    private static final String LOADRL ="http://10.1.4.145" ;

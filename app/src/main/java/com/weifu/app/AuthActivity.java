@@ -698,7 +698,7 @@ public class AuthActivity extends AppCompatActivity {
             ttsUtils.addToQueue(message);
 
             // 发送通知
-            NotificationUtil.showNotification(AuthActivity.this, message);
+            NotificationUtil.showNotification(AuthActivity.this,"", message);
         });
         mSocket.on(Socket.EVENT_CONNECT_ERROR, args -> Log.d(TAG, args[0].toString()));
 
