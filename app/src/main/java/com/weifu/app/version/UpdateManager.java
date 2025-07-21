@@ -65,8 +65,9 @@ public class UpdateManager {
 	/**
 	 * 下载
 	 */
-	private 	AlertDialog downloadDg;
- 
+//	private 	AlertDialog downloadDg;
+	private 	CustomDialog downloadDg;
+
  
 	/**
 	 * 参数为Context(上下文activity)的构造函数
@@ -185,19 +186,29 @@ public class UpdateManager {
 	 * 弹出下载框
 	 */
 	private void showDownloadDialog() {
-		 Builder builder = new Builder(mContext);
+//		 Builder builder = new Builder(mContext);
+		 CustomDialog.Builder builder = new CustomDialog.Builder(mContext);
 		builder.setTitle("版本更新中...");
 		final LayoutInflater inflater = LayoutInflater.from(mContext);
 		View v = inflater.inflate(R.layout.update_progress, null);
 		progressBar = (ProgressBar) v.findViewById(R.id.pb_update_progress);
 		builder.setView(v);
-		builder.setNegativeButton("取消", new OnClickListener() {
-			public void onClick(DialogInterface dialog, int which) {
-				dialog.dismiss();
-				//终止下载
-				isInterceptDownload = true;
-			}
-		});
+		builder.setButtonCancel("取消", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+
+  				//终止下载
+ 				isInterceptDownload = true;
+            }
+        });
+
+//		builder.setNegativeButton("取消", new OnClickListener() {
+//			public void onClick(DialogInterface dialog, int which) {
+//				dialog.dismiss();
+//				//终止下载
+//				isInterceptDownload = true;
+//			}
+//		});
 		downloadDg =	builder.create();
 		downloadDg.show();
 		//下载apk

@@ -51,6 +51,14 @@
                 android:textColor="@android:color/black"
                 android:gravity="center_horizontal"
                 android:textSize="@dimen/size_16" />
+
+            <!-- 自定义视图容器 -->
+            <FrameLayout
+                android:id="@+id/custom_view_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="gone"
+                android:layout_marginTop="@dimen/margin_10"/>
         </LinearLayout>
 
         <LinearLayout

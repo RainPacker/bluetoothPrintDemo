@@ -6,7 +6,9 @@ import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.TextView;
 
 import com.weifu.app.R;
@@ -33,7 +35,8 @@ public class CustomDialog extends Dialog {
 	/* Builder */
 	public static class Builder {
 		private TextView tvTitle, tvWarning, tvInfo;
-		private Button btnCancel, btnConfirm;
+    private Button btnCancel, btnConfirm;
+    private View mCustomView;
  
 		private View mLayout;
 		private View.OnClickListener mButtonCancelClickListener;
@@ -83,6 +86,24 @@ public class CustomDialog extends Dialog {
 			tvInfo.setText(message);
 			return this;
 		}
+
+		public Builder setView(View view){
+			mDialog.setContentView(view);
+			FrameLayout frameLayout = (FrameLayout) mLayout.findViewById(R.id.custom_view_container);
+			frameLayout.setVisibility(View.GONE);
+             if (frameLayout != null && view != null) {
+                 // 先移除视图可能存在的父容器
+                 ViewParent parent = view.getParent();
+                 if (parent instanceof ViewGroup) {
+                     ((ViewGroup) parent).removeView(view);
+                 }
+                 // 清除容器中已存在的视图
+                 frameLayout.removeAllViews();
+                 frameLayout.addView(view);
+                 frameLayout.setVisibility(View.VISIBLE);
+             }
+			return this;
+		}
  
 		/**
 		 * 设置取消按钮文字和监听
@@ -120,11 +141,17 @@ public class CustomDialog extends Dialog {
 			});
  
 			mDialog.setContentView(mLayout);
+			// 添加自定义视图
+
 			mDialog.setCancelable(false);
 			mDialog.setCanceledOnTouchOutside(false);
 			if(btnCancel.getText() ==null || "".equals(btnCancel.getText())){
 				btnCancel.setVisibility(View.GONE);
 			}
+			if(btnConfirm.getText() ==null || "".equals(btnConfirm.getText())){
+				btnConfirm.setVisibility(View.GONE);
+			}
+
 			return mDialog;
 		}
 	}

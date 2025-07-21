@@ -90,7 +90,7 @@ import java.util.Random;
 
 public class MainActivity extends AppCompatActivity /**implements Scanner.DataListener, EMDKManager.EMDKListener**/ {
      private static final int REQUEST_OPEN = 0X01;
-    private static final String COM_WEIFU_IWMS_FILEPROVIDE = "com.weifu.iwms.fileprovider";
+    private static final String COM_WEIFU_IWMS_FILEPROVIDE = "com.weifu.exception.fileprovider";
     private static final String WATERMARK_TEXT = "安全生产";
     private static final String CHANNEL_ID ="wps" ;
     private static final int NOTICE_PERMISSION_REQUEST_CODE = 3 ;
@@ -106,7 +106,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     String TAG = getClass().getSimpleName();
     // prod
 //    private static final String LOADRL ="http://10.1.4.141:81/" ;
-    private static final String LOADRL ="http://10.13.10.42" ;
+    private static final String LOADRL ="http://10.204.10.28:31338/" ;
 //    private static final String LOADRL ="http://10.1.77.103/" ;
 
 //    private static final String LOADRL ="http://10.1.4.145" ;
