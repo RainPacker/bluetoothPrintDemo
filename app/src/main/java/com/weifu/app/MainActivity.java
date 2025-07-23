@@ -193,7 +193,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
         int width = displayMetrics.widthPixels;
         int height = displayMetrics.heightPixels;
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+      //  setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
 //        TelephonyManager telephonyManager = (TelephonyManager) this.getSystemService(Context.TELEPHONY_SERVICE);
 //        if (telephonyManager.getPhoneType() == TelephonyManager.PHONE_TYPE_NONE) {
 //            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);

@@ -6,6 +6,7 @@ import static android.provider.Settings.System.getString;
 import static com.inuker.bluetooth.library.Code.REQUEST_SUCCESS;
 
 import android.Manifest;
+import android.app.AlertDialog;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -16,6 +17,7 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
 import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
@@ -139,6 +141,7 @@ public class JsBridge extends BroadcastReceiver {
         handlerThread.start();
         ttsUtils =TTSUtils.getInstance(mainActivity);
         printWorkHandler=  new PrintWorkHandler(handlerThread.getLooper(), this);
+        NotificationUtil.createNotificationChannel(mainActivity);
     }
 
     public List<BluetoothDevice> getDevices() {
@@ -1184,6 +1187,24 @@ private  static  class PrintWorkHandler extends Handler {
         ioSocket.on("msg", args -> {
             String message = (String) args[0];
             Log.d(TAG, "收到消息: " + message);
+            AlertDialog.Builder builder = new AlertDialog.Builder(activity);
+            builder.setTitle("提示")
+                    .setMessage(message)
+                    .setCancelable(false)
+                    .setPositiveButton("我知道了", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            // 点击确定按钮的操作
+                           dialog.dismiss();
+                        }
+                    });
+            // 创建并显示对话框
+            activity.runOnUiThread(()->{
+                AlertDialog dialog = builder.create();
+                dialog.show();
+            });
+
+
 
 
 

@@ -60,7 +60,7 @@ public class NotificationUtil {
 
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         // 生成消息唯一id
-        int MSG_ID = Math.toIntExact((long) (Math.random() * 9000000000000L) + 1000000000000L);
+        int MSG_ID = Math.toIntExact((long) (Math.random() * 9000000L) + 1000000L);
 
         manager.notify(MSG_ID, notification);
     }

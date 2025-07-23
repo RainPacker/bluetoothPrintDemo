@@ -81,10 +81,10 @@ public class AuthActivity extends AppCompatActivity {
 
         // 尝试恢复上次登录的用户
         restoreLastLoginUser();
-        initSocketIO();
-        // 初始化通知渠道
-        NotificationUtil.createNotificationChannel(this);
-        ttsUtils = TTSUtils.getInstance(this);
+//        initSocketIO();
+//        // 初始化通知渠道
+//        NotificationUtil.createNotificationChannel(this);
+//        ttsUtils = TTSUtils.getInstance(this);
     }
     
     /**
