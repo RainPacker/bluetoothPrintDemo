@@ -3,6 +3,7 @@ package com.weifu.app.js;
 
 import static android.content.Context.NOTIFICATION_SERVICE;
 import static android.provider.Settings.System.getString;
+import static androidx.core.content.ContextCompat.startForegroundService;
 import static com.inuker.bluetooth.library.Code.REQUEST_SUCCESS;
 
 import android.Manifest;
@@ -51,6 +52,7 @@ import com.weifu.app.AuthActivity;
 import com.weifu.app.MainActivity;
 import com.weifu.app.R;
 import com.weifu.app.scan.ScannerInterface;
+import com.weifu.app.service.SocketServices;
 import com.weifu.app.sound.SoundPlayer;
 import com.weifu.app.ui.custom.MyScan;
 import com.weifu.app.utils.NotificationUtil;
@@ -106,6 +108,7 @@ public class JsBridge extends BroadcastReceiver {
      * 斑马
      */
     public static final   String ACTION_ZEBRA_SCANRESULT="default";
+    public static final   String ACTION_SOCKET_MSG="SOCKET_ACTION";
 
     final static int TASK_TYPE_CONNECT = 1;
     final static int TASK_TYPE_PRINT = 2;
@@ -930,6 +933,43 @@ private  static  class PrintWorkHandler extends Handler {
             this.btConnected = false;
 
         }
+        // socket 事件通知
+        if (JsBridge.ACTION_SOCKET_MSG.equals(intent.getAction())) {
+            String msg = intent.getStringExtra("DATA");
+            Log.d(TAG,"收到socket 消息"+ msg);
+            AlertDialog.Builder builder = new AlertDialog.Builder(activity);
+            builder.setTitle("提示")
+                    .setMessage(msg)
+                    .setCancelable(false)
+                    .setPositiveButton("我知道了", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            // 点击确定按钮的操作
+                            dialog.dismiss();
+                        }
+                    });
+            // 创建并显示对话框
+            activity.runOnUiThread(()->{
+                AlertDialog dialog = builder.create();
+                dialog.show();
+            });
+
+
+
+
+
+            // 播放提示音
+            SoundPlayer.playNotificationSound(activity);
+            // 设置参数示例
+            ttsUtils.setLanguage(Locale.CHINESE);
+            ttsUtils.setSpeechRate(0.9f);
+            ttsUtils.setPitch(1.1f);
+            ttsUtils.addToQueue(msg);
+
+            // 发送通知
+            NotificationUtil.showNotification(activity,"通知", msg);
+
+        }
     }
 
 
@@ -1139,7 +1179,12 @@ private  static  class PrintWorkHandler extends Handler {
      */
     @JavascriptInterface
     public void login(String userId,String token){
-         initSocketIO(userId,token);
+       //  initSocketIO(userId,token);
+        Intent serviceIntent = new Intent(activity, SocketServices.class);
+        serviceIntent.putExtra("userId",userId);
+        serviceIntent.putExtra("token",token);
+        serviceIntent.putExtra("socketUrl",socketUrl);
+         startForegroundService(activity,serviceIntent);
     }
     /**
      * 初始化socket

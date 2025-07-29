@@ -258,6 +258,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         IntentFilter actionFilters = new IntentFilter();
         actionFilters.addAction(JsBridge.ACTION_IDATA_SCANRESULT);
         actionFilters.addAction(JsBridge.ACTION_ZEBRA_SCANRESULT);
+        actionFilters.addAction(JsBridge.ACTION_SOCKET_MSG);
         actionFilters.addAction(Intent.ACTION_SCREEN_ON);
         actionFilters.addAction( BluetoothAdapter.ACTION_STATE_CHANGED);
         actionFilters.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);

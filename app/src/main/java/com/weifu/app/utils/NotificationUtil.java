@@ -42,7 +42,7 @@ public class NotificationUtil {
 
     public static void showNotification(Context context,String title, String message) {
         Intent intent = new Intent(context, MainActivity.class);
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE);
 
         Uri soundUri = Uri.parse("android.resource://" + context.getPackageName() + "/" + R.raw.notification_sound);
@@ -54,8 +54,9 @@ public class NotificationUtil {
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setSound(soundUri)
                 .setVibrate(new long[]{0, 500, 200, 500}) // 振动模式
-//                .setContentIntent(pendingIntent)
+                .setContentIntent(pendingIntent)
                 .setAutoCancel(true)
+                .setWhen(System.currentTimeMillis())
                 .build();
 
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
@@ -82,6 +83,7 @@ public class NotificationUtil {
                 .setVibrate(new long[]{0, 500, 200, 500}) // 振动模式
 //                .setContentIntent(pendingIntent)
                 .setAutoCancel(true)
+                .setWhen(System.currentTimeMillis())
                 .build();
 
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
@@ -106,6 +108,7 @@ public class NotificationUtil {
                 .setVibrate(new long[]{0, 500, 200, 500}) // 振动模式
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true)
+                .setWhen(System.currentTimeMillis())
                 .build();
 
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
@@ -138,6 +141,7 @@ public class NotificationUtil {
                 .setContentIntent(pendingIntent)
                 .setProgress(max,progress,false)
                 .setAutoCancel(true)
+                .setWhen(System.currentTimeMillis())
                 .build();
 
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
