@@ -47,9 +47,11 @@ import com.inuker.bluetooth.library.connect.options.BleConnectOptions;
 import com.inuker.bluetooth.library.connect.response.BleConnectResponse;
 import com.inuker.bluetooth.library.connect.response.BleWriteResponse;
 import com.inuker.bluetooth.library.model.BleGattProfile;
+import com.weifu.app.AuthActivity;
 import com.weifu.app.MainActivity;
 import com.weifu.app.R;
 import com.weifu.app.scan.ScannerInterface;
+import com.weifu.app.sound.SoundPlayer;
 import com.weifu.app.ui.custom.MyScan;
 import com.weifu.app.utils.NotificationUtil;
 import com.weifu.app.utils.TTSUtils;
@@ -1209,7 +1211,7 @@ private  static  class PrintWorkHandler extends Handler {
 
 
             // 播放提示音
-            //  SoundPlayer.playNotificationSound(AuthActivity.this);
+              SoundPlayer.playNotificationSound(activity);
             // 设置参数示例
             ttsUtils.setLanguage(Locale.CHINESE);
             ttsUtils.setSpeechRate(0.9f);

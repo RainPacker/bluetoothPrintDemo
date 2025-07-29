@@ -64,4 +64,84 @@ public class NotificationUtil {
 
         manager.notify(MSG_ID, notification);
     }
+
+
+    public static void showNotificationWithMsgId(Context context,String title, String message,int msgId) {
+        Intent intent = new Intent(context, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE);
+
+        Uri soundUri = Uri.parse("android.resource://" + context.getPackageName() + "/" + R.raw.notification_sound);
+
+        Notification notification = new NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.logo_round)
+                .setContentTitle(StringUtils.isBlank(title)?"提示" : title)
+                .setContentText(message)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setSound(soundUri)
+                .setVibrate(new long[]{0, 500, 200, 500}) // 振动模式
+//                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .build();
+
+        NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+
+        manager.notify(msgId, notification);
+    }
+
+
+    public static void showPendingNotificationWithMsgId(Context context,String title, String message,int msgId,PendingIntent pendingIntent) {
+        Intent intent = new Intent(context, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+//        PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE);
+
+        Uri soundUri = Uri.parse("android.resource://" + context.getPackageName() + "/" + R.raw.notification_sound);
+
+        Notification notification = new NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.logo_round)
+                .setContentTitle(StringUtils.isBlank(title)?"提示" : title)
+                .setContentText(message)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setSound(soundUri)
+                .setVibrate(new long[]{0, 500, 200, 500}) // 振动模式
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .build();
+
+        NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+
+        manager.notify(msgId, notification);
+    }
+
+    /**
+     *
+     * @param context
+     * @param title
+     * @param message
+     * @param msgId
+     * @param pendingIntent
+     */
+    public static void showPendingNotificationWithProgress(Context context,String title, String message,int msgId,PendingIntent pendingIntent,int max,int progress) {
+        Intent intent = new Intent(context, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+//        PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE);
+
+        Uri soundUri = Uri.parse("android.resource://" + context.getPackageName() + "/" + R.raw.notification_sound);
+
+        Notification notification = new NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.logo_round)
+                .setContentTitle(StringUtils.isBlank(title)?"提示" : title)
+                .setContentText(message)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+//                .setSound(soundUri)
+                .setVibrate(new long[]{0, 500, 200, 500}) // 振动模式
+                .setContentIntent(pendingIntent)
+                .setProgress(max,progress,false)
+                .setAutoCancel(true)
+                .build();
+
+        NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+
+        manager.notify(msgId, notification);
+    }
 }

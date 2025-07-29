@@ -9,9 +9,11 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.List;
 
+import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.app.AlertDialog.Builder;
 import android.app.Dialog;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnClickListener;
@@ -35,6 +37,7 @@ import androidx.core.graphics.PathUtils;
 import com.weifu.app.BuildConfig;
 import com.weifu.app.R;
 import com.weifu.app.ui.custom.CustomDialog;
+import com.weifu.app.utils.NotificationUtil;
 import com.weifu.utils.XMLParserUtil;
 
 
@@ -59,7 +62,8 @@ public class UpdateManager {
 	private static final String savePath = 	Environment.DIRECTORY_DOWNLOADS;
  
 	private static final String saveFileName = "wps.apk";
- 
+	private static final int MSG_ID = 1101;
+
 	//下载地址
 	private String downloadURL = null;
 	/**
@@ -313,18 +317,21 @@ public class UpdateManager {
 	/**
 	 * 声明一个handler来跟进进度条
 	 */
-	private Handler handler = new Handler() {
+	@SuppressLint("HandlerLeak")
+    private Handler handler = new Handler() {
 		public void handleMessage(Message msg) {
 			switch (msg.what) {
 			case 1:
 				// 更新进度情况
 				progressBar.setProgress(progress);
+				NotificationUtil.showPendingNotificationWithProgress(mContext,"更新下载",progress +"100%",MSG_ID,getInstallIntent(),100,progress);
 				break;
 			case 0:
 				if (downloadDg != null){
 				  downloadDg.dismiss();
 				}
 				progressBar.setVisibility(View.INVISIBLE);
+				NotificationUtil.showPendingNotificationWithProgress(mContext,"更新下载","100%",MSG_ID,getInstallIntent(),100,100);
 				// 安装apk文件
 				installApk();
 				break;
@@ -376,6 +383,55 @@ public class UpdateManager {
 	} catch (Exception e) {
 		e.printStackTrace();
 	}
+
+	}
+
+
+	public PendingIntent getInstallIntent() {
+		try {
+			File apkfile = new File(mContext.getExternalFilesDir(savePath), saveFileName);
+			if (!apkfile.exists()) {
+				return null;
+			}
+
+
+			Intent intent = new Intent(Intent.ACTION_VIEW);
+			intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+			intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+					| Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+					| Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+			Uri contentUri;
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+				contentUri = FileProvider.getUriForFile(mContext, BuildConfig.APPLICATION_ID + ".fileprovider", apkfile);
+			} else {
+				contentUri = Uri.fromFile(apkfile);
+			}
+			intent.setDataAndType(contentUri, "application/vnd.android.package-archive");
+			List<ResolveInfo> resolveLists = mContext.getPackageManager().queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY);
+			if (resolveLists != null) {
+				for (ResolveInfo resolveInfo : resolveLists) {
+					if (resolveInfo != null && resolveInfo.activityInfo != null) {
+						String packageName = resolveInfo.activityInfo.packageName;
+						mContext.grantUriPermission(packageName, contentUri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+								| Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+					}
+				}
+			}
+			PendingIntent contentIntent;
+			if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S){
+				// 创建意图 PendingIntent，用于点击通知后启动目标Activity
+				contentIntent = PendingIntent.getActivity(mContext, 0, intent, PendingIntent.FLAG_IMMUTABLE);
+			}else {
+				// 创建意图 PendingIntent，用于点击通知后启动目标Activity
+				contentIntent = PendingIntent.getActivity(mContext, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+			}
+
+			return contentIntent;
+
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return  null;
 
 	}
 }
