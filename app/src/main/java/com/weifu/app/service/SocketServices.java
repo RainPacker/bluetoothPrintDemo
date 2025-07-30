@@ -135,20 +135,26 @@ public class SocketServices    extends Service {
         ioSocket.on("msg", args -> {
             String message = (String) args[0];
             Log.d(TAG, "收到消息: " + message);
-            sendBoradcast(message);
+            sendBoradcast(message,false);
 
         });
         ioSocket.on(Socket.EVENT_CONNECT_ERROR, args -> Log.d(TAG, args[0].toString()));
 
         ioSocket.on(Socket.EVENT_DISCONNECT, args ->{ Log.d(TAG, "Disconnected from server");
-           showToast("通知服务连接已经断开！");
+            sendBoradcast("通知服务连接已经断开!",true);
 
         });
     }
 
-    public  void sendBoradcast(String msg){
+    /**
+     *
+     * @param msg
+     * @param flag  失败标识
+     */
+    public  void sendBoradcast(String msg,Boolean flag){
         Intent broadcastIntent = new Intent("SOCKET_ACTION");
         broadcastIntent.putExtra("DATA", msg);
+        broadcastIntent.putExtra("FLAG", flag);
         sendBroadcast(broadcastIntent);
     }
 }

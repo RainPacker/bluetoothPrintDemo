@@ -936,38 +936,45 @@ private  static  class PrintWorkHandler extends Handler {
         // socket 事件通知
         if (JsBridge.ACTION_SOCKET_MSG.equals(intent.getAction())) {
             String msg = intent.getStringExtra("DATA");
-            Log.d(TAG,"收到socket 消息"+ msg);
-            AlertDialog.Builder builder = new AlertDialog.Builder(activity);
-            builder.setTitle("提示")
-                    .setMessage(msg)
-                    .setCancelable(false)
-                    .setPositiveButton("我知道了", new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialog, int which) {
-                            // 点击确定按钮的操作
-                            dialog.dismiss();
-                        }
-                    });
-            // 创建并显示对话框
-            activity.runOnUiThread(()->{
-                AlertDialog dialog = builder.create();
-                dialog.show();
-            });
+            Boolean flag = intent.getBooleanExtra("FLAG",false);
+            Log.d(TAG,"msg"+msg+" flag:"+flag);
+            if (!flag) {
+                Log.d(TAG,"收到socket 消息"+ msg);
+                AlertDialog.Builder builder = new AlertDialog.Builder(activity);
+                builder.setTitle("提示")
+                        .setMessage(msg)
+                        .setCancelable(false)
+                        .setPositiveButton("我知道了", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                // 点击确定按钮的操作
+                                dialog.dismiss();
+                            }
+                        });
+                // 创建并显示对话框
+                activity.runOnUiThread(()->{
+                    AlertDialog dialog = builder.create();
+                    dialog.show();
+                });
 
 
 
 
 
-            // 播放提示音
-            SoundPlayer.playNotificationSound(activity);
-            // 设置参数示例
-            ttsUtils.setLanguage(Locale.CHINESE);
-            ttsUtils.setSpeechRate(0.9f);
-            ttsUtils.setPitch(1.1f);
-            ttsUtils.addToQueue(msg);
+                // 播放提示音
+                SoundPlayer.playNotificationSound(activity);
+                // 设置参数示例
+                ttsUtils.setLanguage(Locale.CHINESE);
+                ttsUtils.setSpeechRate(0.9f);
+                ttsUtils.setPitch(1.1f);
+                ttsUtils.addToQueue(msg);
 
-            // 发送通知
-            NotificationUtil.showNotification(activity,"通知", msg);
+                // 发送通知
+                NotificationUtil.showNotification(activity,"通知", msg);
+            }else {
+                showToast(msg);
+            }
+
 
         }
     }
