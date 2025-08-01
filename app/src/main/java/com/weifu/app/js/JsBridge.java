@@ -31,6 +31,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Message;
+import android.text.format.DateUtils;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
@@ -43,6 +44,7 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import com.inuker.bluetooth.library.BluetoothClient;
 import com.inuker.bluetooth.library.connect.options.BleConnectOptions;
 import com.inuker.bluetooth.library.connect.response.BleConnectResponse;
@@ -52,6 +54,7 @@ import com.weifu.app.AuthActivity;
 import com.weifu.app.MainActivity;
 import com.weifu.app.R;
 import com.weifu.app.scan.ScannerInterface;
+import com.weifu.app.service.SocketMsg;
 import com.weifu.app.service.SocketServices;
 import com.weifu.app.sound.SoundPlayer;
 import com.weifu.app.ui.custom.MyScan;
@@ -72,13 +75,16 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.TimeZone;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -940,6 +946,15 @@ private  static  class PrintWorkHandler extends Handler {
             Log.d(TAG,"msg"+msg+" flag:"+flag);
             if (!flag) {
                 Log.d(TAG,"收到socket 消息"+ msg);
+              Gson gson = new Gson();
+                SocketMsg socketMsg = gson.fromJson(msg, SocketMsg.class);
+                String result = socketMsg.getMsg();
+                Date dataTime = new Date(socketMsg.getTime());
+                // 格式化
+                SimpleDateFormat sd = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                sd.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
+                String msgTimeStr = sd.format(dataTime);
+
                 AlertDialog.Builder builder = new AlertDialog.Builder(activity);
                 builder.setTitle("提示")
                         .setMessage(msg)
@@ -962,15 +977,15 @@ private  static  class PrintWorkHandler extends Handler {
 
 
                 // 播放提示音
-                SoundPlayer.playNotificationSound(activity);
+               // SoundPlayer.playNotificationSound(activity);
                 // 设置参数示例
                 ttsUtils.setLanguage(Locale.CHINESE);
                 ttsUtils.setSpeechRate(0.9f);
                 ttsUtils.setPitch(1.1f);
-                ttsUtils.addToQueue(msg);
+                ttsUtils.addToQueue(result);
 
                 // 发送通知
-                NotificationUtil.showNotification(activity,"通知", msg);
+                NotificationUtil.showNotification(activity,"异常提报  "+msgTimeStr, result);
             }else {
                 showToast(msg);
             }

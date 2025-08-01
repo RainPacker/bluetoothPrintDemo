@@ -133,7 +133,7 @@ public class SocketServices    extends Service {
         });
 
         ioSocket.on("msg", args -> {
-            String message = (String) args[0];
+            JSONObject message = (JSONObject) args[0];
             Log.d(TAG, "收到消息: " + message);
             sendBoradcast(message,false);
 
@@ -151,6 +151,13 @@ public class SocketServices    extends Service {
      * @param msg
      * @param flag  失败标识
      */
+    public  void sendBoradcast(JSONObject msg,Boolean flag){
+        Intent broadcastIntent = new Intent("SOCKET_ACTION");
+        broadcastIntent.putExtra("DATA", msg.toString());
+        broadcastIntent.putExtra("FLAG", flag);
+        sendBroadcast(broadcastIntent);
+    }
+
     public  void sendBoradcast(String msg,Boolean flag){
         Intent broadcastIntent = new Intent("SOCKET_ACTION");
         broadcastIntent.putExtra("DATA", msg);
