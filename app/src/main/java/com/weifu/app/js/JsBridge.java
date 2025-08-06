@@ -1300,5 +1300,13 @@ private  static  class PrintWorkHandler extends Handler {
     }
 
 
+    @JavascriptInterface
+    public void ttl(String result){
+        ttsUtils.setLanguage(Locale.CHINESE);
+        ttsUtils.setSpeechRate(0.9f);
+        ttsUtils.setPitch(1.1f);
+        ttsUtils.addToQueue(result);
+    }
+
 
 }

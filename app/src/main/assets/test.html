@@ -31,7 +31,9 @@
     }
     function sendNotice (){
       var content =   document.getElementById("content").value;
-      JsBridge.sendMessageNotice(content);
+      JsBridge.sendMessageNotice("通知",content);
+           JsBridge.ttl(content);
+
     }
     function handleFingerprintResult(rs){
          console.log(rs);
