@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -16,6 +17,7 @@ import android.widget.Toast;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 
+import com.weifu.app.MainActivity;
 import com.weifu.app.R;
 import com.weifu.app.js.JsBridge;
 import com.weifu.app.sound.SoundPlayer;
@@ -52,19 +54,23 @@ public class SocketServices    extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        startForeground(NOTIFICATION_ID, createNotification());
+        startForeground(NOTIFICATION_ID, createNotification("已连接通知服务器"));
     }
 
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private Notification createNotification() {
+    private Notification createNotification(String content) {
         createNotificationChannel();
+        Intent intent = new Intent(getApplicationContext(), MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pendingIntent = PendingIntent.getActivity(getApplicationContext(), 0, intent, PendingIntent.FLAG_IMMUTABLE);
 
         return new Notification.Builder(this, CHANNEL_ID)
                 .setContentTitle("服务运行中")
-                .setContentText("已连接通知服务器")
+                .setContentText(content)
                 .setSmallIcon(R.drawable.logo_round)
                 .setPriority(Notification.PRIORITY_LOW)
+                .setContentIntent(pendingIntent)
                 .build();
     }
 
@@ -100,6 +106,13 @@ public class SocketServices    extends Service {
             options.transports = new String[] { "websocket","polling" }; // 禁用Polling
             options.auth = auth;
             options.upgrade= true;
+            options.reconnectionAttempts = Integer.MAX_VALUE; // 无限重连
+            // 重连延迟
+            options.reconnectionDelay = 1000;
+            // 最大重连延迟
+            options.reconnectionDelayMax = 5000;
+            // 连接超时时间
+            options.timeout = 20000;
             ioSocket = IO.socket(socketUrl, options);
             Log.d(TAG, "initSocketIO: "+ioSocket.connect());
 
@@ -120,6 +133,9 @@ public class SocketServices    extends Service {
 
     private void setupSocketListeners(String userId,String token) {
         ioSocket.on(Socket.EVENT_CONNECT, args ->{ Log.d(TAG, "Connected to server");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForeground(NOTIFICATION_ID, createNotification("已连接通知服务器"));
+            }
 
             JSONObject loginInfo = new JSONObject();
             try {
@@ -142,6 +158,9 @@ public class SocketServices    extends Service {
 
         ioSocket.on(Socket.EVENT_DISCONNECT, args ->{ Log.d(TAG, "Disconnected from server");
             sendBoradcast("通知服务连接已经断开!",true);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForeground(NOTIFICATION_ID, createNotification("通知服务连接已经断开"));
+            }
 
         });
     }

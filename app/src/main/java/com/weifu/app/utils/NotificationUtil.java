@@ -5,6 +5,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.drawable.Icon;
 import android.media.AudioAttributes;
 import android.net.Uri;
 import android.os.Build;
@@ -17,6 +18,7 @@ import com.weifu.app.R;
 public class NotificationUtil {
     private static final String CHANNEL_ID = "socket_channel";
     private static final int NOTIFICATION_ID = 1001;
+    public static final String SOCKET_GROUP = "socket_group";
 
     public static void createNotificationChannel(Context context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -34,6 +36,8 @@ public class NotificationUtil {
                     .build();
             channel.setSound(soundUri, audioAttributes);
             channel.enableVibration(true);
+            channel.setBypassDnd(true);
+            channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             
             NotificationManager manager = context.getSystemService(NotificationManager.class);
             manager.createNotificationChannel(channel);
@@ -46,6 +50,11 @@ public class NotificationUtil {
         PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE);
 
         Uri soundUri = Uri.parse("android.resource://" + context.getPackageName() + "/" + R.raw.notification_sound);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Notification.BubbleMetadata bubbleMetadata = new Notification.BubbleMetadata.Builder(pendingIntent, Icon.createWithResource(context, R.drawable.logo_round)).build();
+            }
+        }
 
         Notification notification = new NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.logo_round)
@@ -55,11 +64,15 @@ public class NotificationUtil {
                 .setSound(soundUri)
                 .setVibrate(new long[]{0, 500, 200, 500}) // 振动模式
                 .setContentIntent(pendingIntent)
+                .setFullScreenIntent(pendingIntent, true)
                 .setAutoCancel(true)
+                .setGroup(SOCKET_GROUP)
                 .setWhen(System.currentTimeMillis())
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .build();
 
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        //
         // 生成消息唯一id
         int MSG_ID = Math.toIntExact((long) (Math.random() * 9000000L) + 1000000L);
 

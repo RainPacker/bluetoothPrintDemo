@@ -1292,6 +1292,7 @@ private  static  class PrintWorkHandler extends Handler {
 
         ioSocket.on(Socket.EVENT_DISCONNECT, args ->{ Log.d(TAG, "Disconnected from server");
             this.showToast("通知服务连接已经断开！");
+
 //            ttsUtils.setLanguage(Locale.CHINESE);
 //            ttsUtils.setSpeechRate(0.9f);
 //            ttsUtils.setPitch(1.1f);

@@ -14,6 +14,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -68,6 +69,7 @@ import com.symbol.emdk.barcode.BarcodeManager;
 import com.symbol.emdk.barcode.Scanner;
 import com.symbol.emdk.barcode.ScannerInfo;
 import com.weifu.action.PermissionsResultAction;
+import com.weifu.app.helper.BatteryOptimizationHelper;
 import com.weifu.app.js.JsBridge;
 import com.weifu.app.ui.custom.CustomDialog;
 import com.weifu.app.ui.home.AndroidBug5497Workaround;
@@ -131,6 +133,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private Uri imageUri;
     private ValueCallback<Uri[]> mUploadCallbackAboveL;
     private boolean isGrant= false;
+    private static final String PREF_FIRST_RUN = "first_run";
     NotificationChannel channel;
 
 
@@ -310,7 +313,14 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         layoutParams.bottomMargin=(int)getNavigationBarHeight();
         webView.setLayoutParams(layoutParams);
 
-        createNoticeChannel();
+      //  createNoticeChannel();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            boolean ignoringBatteryOptimizations = BatteryOptimizationHelper.isIgnoringBatteryOptimizations(this);
+            if (!ignoringBatteryOptimizations) {
+                BatteryOptimizationHelper.requestIgnoreBatteryOptimization(this);
+            }
+        }
+
     }
 
     @Override
