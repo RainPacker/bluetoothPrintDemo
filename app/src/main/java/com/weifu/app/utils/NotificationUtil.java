@@ -68,7 +68,7 @@ public class NotificationUtil {
                 .setAutoCancel(true)
                 .setGroup(SOCKET_GROUP)
                 .setWhen(System.currentTimeMillis())
-                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setCategory(NotificationCompat.CATEGORY_CALL)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .build();
 
