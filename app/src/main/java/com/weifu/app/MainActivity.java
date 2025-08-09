@@ -108,11 +108,11 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     String TAG = getClass().getSimpleName();
     // prod
 //    private static final String LOADRL ="http://10.1.4.141:81/" ;
-    private static final String LOADRL ="http://10.204.10.28:31338/" ;
+//    private static final String LOADRL ="http://10.204.10.28:31338/" ;
 //    private static final String LOADRL ="http://10.1.77.103/" ;
 
 //    private static final String LOADRL ="http://10.1.4.145" ;
-   // private static final String LOADRL ="file:///android_asset/test.html" ;
+    private static final String LOADRL ="file:///android_asset/test.html" ;
 //    private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10011;
@@ -135,6 +135,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private boolean isGrant= false;
     private static final String PREF_FIRST_RUN = "first_run";
     NotificationChannel channel;
+
+    private boolean isFirst = false;
 
 
     public final IMyBinder getPrinterBinder() {
@@ -312,12 +314,17 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
         layoutParams.bottomMargin=(int)getNavigationBarHeight();
         webView.setLayoutParams(layoutParams);
-
-      //  createNoticeChannel();
+        SharedPreferences spf = getSharedPreferences("initFlag",MODE_PRIVATE);
+         isFirst = spf.getBoolean("isFirst", false);
+        Log.d(TAG, "onCreate: isFirst==>"+isFirst);
+        //  createNoticeChannel();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             boolean ignoringBatteryOptimizations = BatteryOptimizationHelper.isIgnoringBatteryOptimizations(this);
             if (!ignoringBatteryOptimizations) {
-                BatteryOptimizationHelper.requestIgnoreBatteryOptimization(this);
+                if (!isFirst) {
+                    BatteryOptimizationHelper.requestIgnoreBatteryOptimization(this);
+                }
+
             }
         }
 
@@ -406,6 +413,12 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
                 }
 
             }
+        }
+        if (requestCode == BatteryOptimizationHelper.REQUEST_IGNORE_BATTERY_OPTIMIZATION) {
+            Log.i(TAG,"设置结果"+data);
+            SharedPreferences.Editor edit = getSharedPreferences("initFlag", MODE_PRIVATE).edit();
+            edit.putBoolean("isFirst", true);
+            edit.apply();
         }
     }
 

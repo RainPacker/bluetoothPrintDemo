@@ -54,7 +54,7 @@ public class SocketServices    extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        startForeground(NOTIFICATION_ID, createNotification("已连接通知服务器"));
+
     }
 
 

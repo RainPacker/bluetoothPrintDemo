@@ -14,7 +14,7 @@ import android.provider.Settings;
 import androidx.annotation.RequiresApi;
 
 public class BatteryOptimizationHelper {
-    private static final int REQUEST_IGNORE_BATTERY_OPTIMIZATION = 1001;
+    public static final int REQUEST_IGNORE_BATTERY_OPTIMIZATION = 1001;
     
     @RequiresApi(api = Build.VERSION_CODES.M)
     public static boolean isIgnoringBatteryOptimizations(Context context) {
