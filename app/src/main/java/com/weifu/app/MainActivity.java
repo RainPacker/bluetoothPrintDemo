@@ -108,11 +108,11 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     String TAG = getClass().getSimpleName();
     // prod
 //    private static final String LOADRL ="http://10.1.4.141:81/" ;
-//    private static final String LOADRL ="http://10.204.10.28:31338/" ;
+    private static final String LOADRL ="http://10.204.10.28:31338/" ;
 //    private static final String LOADRL ="http://10.1.77.103/" ;
 
 //    private static final String LOADRL ="http://10.1.4.145" ;
-    private static final String LOADRL ="file:///android_asset/test.html" ;
+//    private static final String LOADRL ="file:///android_asset/test.html" ;
 //    private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10011;
