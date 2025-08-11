@@ -969,6 +969,8 @@ private  static  class PrintWorkHandler extends Handler {
                 // 创建并显示对话框
                 activity.runOnUiThread(()->{
                     AlertDialog dialog = builder.create();
+                    // 设置对话框背景为圆角样式
+                    dialog.getWindow().setBackgroundDrawableResource(R.drawable.rect_s_rounded_white);
                     dialog.show();
                 });
 
@@ -1257,21 +1259,23 @@ private  static  class PrintWorkHandler extends Handler {
             String message = (String) args[0];
             Log.d(TAG, "收到消息: " + message);
             AlertDialog.Builder builder = new AlertDialog.Builder(activity);
-            builder.setTitle("提示")
-                    .setMessage(message)
-                    .setCancelable(false)
-                    .setPositiveButton("我知道了", new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialog, int which) {
-                            // 点击确定按钮的操作
-                           dialog.dismiss();
-                        }
-                    });
-            // 创建并显示对话框
-            activity.runOnUiThread(()->{
-                AlertDialog dialog = builder.create();
-                dialog.show();
-            });
+builder.setTitle("提示")
+        .setMessage(message)
+        .setCancelable(false)
+        .setPositiveButton("我知道了", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                // 点击确定按钮的操作
+               dialog.dismiss();
+            }
+        });
+// 创建并显示对话框
+activity.runOnUiThread(()->{
+    AlertDialog dialog = builder.create();
+    // 设置对话框背景为圆角样式
+    dialog.getWindow().setBackgroundDrawableResource(R.drawable.rect_s_rounded_white);
+    dialog.show();
+});
 
 
 

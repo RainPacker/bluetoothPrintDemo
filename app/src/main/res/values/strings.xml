@@ -16,7 +16,7 @@
     <string name="btnFingerprint">指纹登录</string>
     <string name="btnPasswordLogin">密码登录</string>
     <string name="btnEnableFingerprint">开通指纹登录</string>
-    <string name="socket_url">hhttp://10.204.10.28:30546</string>
+    <string name="socket_url">http://10.204.10.28:30546</string>
 
     <!-- 登录页面 -->
     <string name="app_logo">应用图标</string>
