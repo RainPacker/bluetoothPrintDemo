@@ -10,6 +10,7 @@ import java.net.URL;
 import java.util.List;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.AlertDialog.Builder;
 import android.app.Dialog;
@@ -27,6 +28,7 @@ import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.ProgressBar;
@@ -58,6 +60,8 @@ public class UpdateManager {
 	private boolean isInterceptDownload = false;
 	//进度条显示数值
 	private int progress = 0;
+	//上次更新时间
+	private long lastUpdateTime = 0;
  
 	private static final String savePath = 	Environment.DIRECTORY_DOWNLOADS;
  
@@ -80,6 +84,7 @@ public class UpdateManager {
 	 */
 	public UpdateManager(Context context) {
 		this.mContext = context;
+		NotificationUtil.createUpdateNotificationChannel(context);
 	}
  
 	public void checkUpdate(String version_url) throws IOException {
@@ -224,8 +229,10 @@ public class UpdateManager {
 	 */
 	private void downloadApk(){
 		//开启另一线程下载
-		Thread downLoadThread = new Thread(downApkRunnable);
-		downLoadThread.start();
+				// 初始化上次更新时间
+				lastUpdateTime = System.currentTimeMillis();
+				Thread downLoadThread = new Thread(downApkRunnable);
+				downLoadThread.start();
 	}
  
 	/**
@@ -278,14 +285,62 @@ public class UpdateManager {
  
 					do{
 						int numRead = is.read(buf);
-						count += numRead;
-						//更新进度条
-						progress = (int) (((float) count / length) * 100);
-						handler.sendEmptyMessage(1);
-						if(numRead <= 0){
-							//下载完成通知安装
+					count += numRead;
+					//更新进度条
+					int newProgress = (int) (((float) count / length) * 100);
 
-							handler.sendEmptyMessage(0);
+					// 只在进度有变化且距离上次更新已超过500ms时才更新
+					if (newProgress != progress && System.currentTimeMillis() - lastUpdateTime > 500) {
+						progress = newProgress;
+						// 确保在UI线程更新进度条
+						if (mContext instanceof Activity) {
+							((Activity) mContext).runOnUiThread(new Runnable() {
+								@Override
+								public void run() {
+									progressBar.setProgress(progress);
+								}
+							});
+						} else {
+							// 如果不是Activity上下文，则使用Handler更新UI
+							handler.post(new Runnable() {
+								@Override
+								public void run() {
+									progressBar.setProgress(progress);
+								}
+							});
+						}
+						handler.sendEmptyMessage(1);
+						lastUpdateTime = System.currentTimeMillis();
+					}
+						if(numRead <= 0){
+							Log.d("download", "run: 下载完成");
+												//确保进度显示为100%
+												progress = 100;
+												//在UI线程更新进度条
+												if (mContext instanceof Activity) {
+													((Activity) mContext).runOnUiThread(new Runnable() {
+														@Override
+														public void run() {
+															progressBar.setProgress(progress);
+														}
+													});
+												} else {
+													handler.post(new Runnable() {
+														@Override
+														public void run() {
+															progressBar.setProgress(progress);
+														}
+													});
+												}
+												//下载完成通知安装
+												if (downloadDg != null){
+													downloadDg.dismiss();
+												}
+												progressBar.setVisibility(View.INVISIBLE);
+
+												handler.sendEmptyMessage(0);
+							// 安装apk文件
+							installApk();
 							isInterceptDownload = true;
 							break;
 						}
@@ -324,16 +379,15 @@ public class UpdateManager {
 			case 1:
 				// 更新进度情况
 				progressBar.setProgress(progress);
-				NotificationUtil.showPendingNotificationWithProgress(mContext,"更新下载",progress +"100%",MSG_ID,getInstallIntent(),100,progress);
+
+				NotificationUtil.showPendingNotificationWithProgress(mContext,"更新下载",progress +"%",MSG_ID,getInstallIntent(),100,progress);
 				break;
 			case 0:
-				if (downloadDg != null){
-				  downloadDg.dismiss();
+				if (downloadDg != null) {
+					downloadDg.dismiss();
 				}
-				progressBar.setVisibility(View.INVISIBLE);
 				NotificationUtil.showPendingNotificationWithProgress(mContext,"更新下载","100%",MSG_ID,getInstallIntent(),100,100);
-				// 安装apk文件
-				installApk();
+
 				break;
 			default:
 				break;

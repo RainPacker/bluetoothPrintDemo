@@ -17,6 +17,8 @@ import com.weifu.app.R;
 
 public class NotificationUtil {
     private static final String CHANNEL_ID = "socket_channel";
+
+    private static final String UPDATE_CHANNEL_ID = "update_channel";
     private static final int NOTIFICATION_ID = 1001;
     public static final String SOCKET_GROUP = "socket_group";
 
@@ -39,6 +41,25 @@ public class NotificationUtil {
             channel.setBypassDnd(true);
             channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             
+            NotificationManager manager = context.getSystemService(NotificationManager.class);
+            manager.createNotificationChannel(channel);
+        }
+    }
+
+
+    public static void createUpdateNotificationChannel(Context context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CharSequence name = "更新通知";
+            String description = "更新通知";
+            int importance = NotificationManager.IMPORTANCE_HIGH;
+
+            NotificationChannel channel = new NotificationChannel(UPDATE_CHANNEL_ID, name, importance);
+            channel.setDescription(description);
+            channel.setSound(null, null);
+            channel.enableVibration(false);
+            channel.setBypassDnd(true);
+            channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+
             NotificationManager manager = context.getSystemService(NotificationManager.class);
             manager.createNotificationChannel(channel);
         }
@@ -131,7 +152,7 @@ public class NotificationUtil {
     }
 
     /**
-     *
+     *   更新使用
      * @param context
      * @param title
      * @param message
@@ -145,13 +166,13 @@ public class NotificationUtil {
 
         Uri soundUri = Uri.parse("android.resource://" + context.getPackageName() + "/" + R.raw.notification_sound);
 
-        Notification notification = new NotificationCompat.Builder(context, CHANNEL_ID)
+        Notification notification = new NotificationCompat.Builder(context, UPDATE_CHANNEL_ID)
                 .setSmallIcon(R.drawable.logo_round)
                 .setContentTitle(StringUtils.isBlank(title)?"提示" : title)
                 .setContentText(message)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
-//                .setSound(soundUri)
-                .setVibrate(new long[]{0, 500, 200, 500}) // 振动模式
+                .setSound(null)
+                .setVibrate(new long[]{0}) // 振动模式
                 .setContentIntent(pendingIntent)
                 .setProgress(max,progress,false)
                 .setAutoCancel(true)

@@ -86,12 +86,14 @@ public class SocketServices    extends Service {
         }
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(TAG,"SocketService start.....");
       String   userId = intent.getStringExtra("userId");
       String token = intent.getStringExtra("token");
       socketUrl = intent.getStringExtra("socketUrl");
+        startForeground(NOTIFICATION_ID, createNotification("正在连接服务..."));
       this.initSocketIO(userId,token);
         return START_STICKY;
     }
