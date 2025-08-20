@@ -957,7 +957,7 @@ private  static  class PrintWorkHandler extends Handler {
 
                 AlertDialog.Builder builder = new AlertDialog.Builder(activity);
                 builder.setTitle("提示")
-                        .setMessage(msg)
+                        .setMessage(result)
                         .setCancelable(false)
                         .setPositiveButton("我知道了", new DialogInterface.OnClickListener() {
                             @Override
