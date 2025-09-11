@@ -48,6 +48,8 @@ import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
+
+import java.io.File;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -69,6 +71,7 @@ import com.symbol.emdk.barcode.BarcodeManager;
 import com.symbol.emdk.barcode.Scanner;
 import com.symbol.emdk.barcode.ScannerInfo;
 import com.weifu.action.PermissionsResultAction;
+import com.weifu.app.download.WebViewDownloadManager;
 import com.weifu.app.helper.BatteryOptimizationHelper;
 import com.weifu.app.js.JsBridge;
 import com.weifu.app.ui.custom.CustomDialog;
@@ -125,6 +128,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private ShapeLoadingDialog shapeLoadingDialog;
     private LoadingView loadingView;
     private JsBridge jsBridge;
+    private WebViewDownloadManager mDownloadManager;
 
     private long exitTime;
 
@@ -190,7 +194,9 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         //WebView加载页面
         webView = findViewById(R.id.web_view);
         webView.getSettings().setJavaScriptEnabled(true);
-
+        
+        // 初始化下载管理器
+        initDownloadManager();
 
         WindowManager windowManager = (WindowManager) this.getSystemService(Context.WINDOW_SERVICE);
         DisplayMetrics displayMetrics = new DisplayMetrics();
@@ -214,45 +220,12 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
         // wevView监听 H5 页面的下载事件
         webView.setDownloadListener(new DownloadListener() {
-
+            @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
-
-                DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-
-                String cookies = CookieManager.getInstance().getCookie(url);
-
-                request.addRequestHeader("cookie", cookies);
-
-                request.addRequestHeader("User-Agent", userAgent);
-
-                request.setDescription("下载中...");
-
-                request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimetype));
-
-                request.allowScanningByMediaScanner(); request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED); request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, contentDisposition, mimetype));
-
-                DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
-
-                manager.enqueue(request);
-
-                showMessage("下载中...");
-
-                //Notif if success
-
-                BroadcastReceiver onComplete = new BroadcastReceiver() {
-
-                    public void onReceive(Context ctxt, Intent intent) {
-
-                        showMessage("下载完成");
-
-                        unregisterReceiver(this);
-
-                    }};
-
-                registerReceiver(onComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
-
+                Log.d(TAG, "检测到下载请求: " + url);
+                // 使用自定义下载管理器处理下载
+                mDownloadManager.startDownload(url, userAgent, contentDisposition, mimetype);
             }
-
         });
 
         //该方法解决的问题是打开浏览器不调用系统浏览器，直接用 webView 打开
@@ -672,6 +645,40 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
    public BluetoothClient getClient(){
         return this.mClient;
    }
+
+    /**
+     * 初始化下载管理器
+     */
+    private void initDownloadManager() {
+        mDownloadManager = new WebViewDownloadManager(this);
+        mDownloadManager.setOnDownloadListener(new WebViewDownloadManager.OnDownloadListener() {
+            @Override
+            public void onDownloadStart(String url, String fileName) {
+                Log.d(TAG, "开始下载: " + fileName + " URL: " + url);
+                // 显示下载开始的提示
+                showMessage("开始下载: " + fileName);
+            }
+
+            @Override
+            public void onDownloadProgress(int progress) {
+                // 可以在这里更新UI上的进度显示（如果需要）
+                Log.d(TAG, "下载进度: " + (progress >= 0 ? progress + "%" : "下载中..."));
+            }
+
+            @Override
+            public void onDownloadComplete(File file) {
+                Log.d(TAG, "下载完成: " + file.getAbsolutePath());
+                // 下载完成后可以进行额外操作，如打开文件或显示通知
+               // showMessage("下载完成");
+            }
+
+            @Override
+            public void onDownloadFailed(String error) {
+                Log.e(TAG, "下载失败: " + error);
+                showMessage(error);
+            }
+        });
+    }
     class MyClient extends WebViewClient {
         @Override
         public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
