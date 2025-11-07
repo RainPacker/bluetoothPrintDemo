@@ -107,9 +107,9 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     // prod
 //    private static final String LOADRL ="http://10.1.4.141:81/" ;
 //    private static final String LOADRL ="http://121.225.97.57:18443/" ;
-    private static final String LOADRL ="http://10.1.50.130:32553/" ;
+//    private static final String LOADRL ="http://10.1.50.130:32553/" ;
 //    private static final String LOADRL ="http://10.1.4.145" ;
-//    private static final String LOADRL ="file:///android_asset/test.html" ;
+    private static final String LOADRL ="file:///android_asset/test.html" ;
 //    private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10011;
@@ -1146,6 +1146,17 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
             }
         }
 
+    }
+    
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        PermissionsManager.getInstance().notifyPermissionsChange(permissions, grantResults);
+        
+        // 将位置权限请求结果传递给JsBridge处理
+        if (jsBridge != null) {
+            jsBridge.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        }
     }
 
 }

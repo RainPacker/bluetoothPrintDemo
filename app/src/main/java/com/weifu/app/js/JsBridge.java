@@ -20,6 +20,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -30,6 +33,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Message;
+import android.provider.Settings;
 import android.util.Log;
 import android.util.Patterns;
 import android.webkit.JavascriptInterface;
@@ -89,10 +93,16 @@ public class JsBridge extends BroadcastReceiver {
     public static final int SCAN_QR_REQUEST_CODE = 10001 ;
     private static final String CHANNEL_ID = "2" ;
     private static final int NOTICE_PERMISSION_REQUEST_CODE = 3 ;
+    private static final int LOCATION_PERMISSION_REQUEST_CODE = 10002;
+    private static final long LOCATION_UPDATE_MIN_TIME = 10000; // 10秒
+    private static final float LOCATION_UPDATE_MIN_DISTANCE = 5.0f; // 5米
     String TAG = getClass().getSimpleName();
     private MainActivity activity;
     private ProgressDialog progressDialog;
     private boolean btConnected = false;
+    private LocationManager locationManager;
+    private LocationListener locationListener;
+    private String locationCallbackFunction = "";
 
 
 
@@ -137,6 +147,9 @@ public class JsBridge extends BroadcastReceiver {
         HandlerThread handlerThread = new HandlerThread("print-thread");
         handlerThread.start();
         printWorkHandler=  new PrintWorkHandler(handlerThread.getLooper(), this);
+        
+        // 初始化位置管理器
+        locationManager = (LocationManager) activity.getSystemService(Context.LOCATION_SERVICE);
     }
 
     public List<BluetoothDevice> getDevices() {
@@ -1103,7 +1116,7 @@ private  static  class PrintWorkHandler extends Handler {
     public void requestNotificationPermission() {
         // Java代码动态申请POST_NOTIFICATIONS权限
         if (Build.VERSION.SDK_INT >= 33) {
-            int checkPermission =
+            int checkPermission = 
                     ContextCompat.checkSelfPermission(this.activity, Manifest.permission.POST_NOTIFICATIONS);
             if (checkPermission != PackageManager.PERMISSION_GRANTED) {
                 //动态申请
@@ -1113,7 +1126,7 @@ private  static  class PrintWorkHandler extends Handler {
                 Log.d(TAG, "requestNotificationPermission: 已经授权");
             }
         } else {
-            int checkPermission =
+            int checkPermission = 
                     ContextCompat.checkSelfPermission(this.activity, Manifest.permission.ACCESS_NOTIFICATION_POLICY);
             if (checkPermission != PackageManager.PERMISSION_GRANTED) {
                 //动态申请
@@ -1123,7 +1136,232 @@ private  static  class PrintWorkHandler extends Handler {
                 Log.d(TAG, "requestNotificationPermission: 已经授权");
             }
         }
-
+    }
+    
+    /**
+     * 动态申请位置权限
+     */
+    private void requestLocationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            // Android 6.0+需要动态申请权限
+            String[] permissions = new String[]{
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+            };
+            
+            boolean hasFineLocationPermission = ContextCompat.checkSelfPermission(
+                    activity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+            boolean hasCoarseLocationPermission = ContextCompat.checkSelfPermission(
+                    activity, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+            
+            if (!hasFineLocationPermission || !hasCoarseLocationPermission) {
+                ActivityCompat.requestPermissions(activity, permissions, LOCATION_PERMISSION_REQUEST_CODE);
+            } else {
+                // 已经有权限，开始定位
+                startLocation();
+            }
+        } else {
+            // Android 6.0以下，直接开始定位
+            startLocation();
+        }
+    }
+    
+    /**
+     * 启动定位
+     */
+    @SuppressLint("MissingPermission")
+    private void startLocation() {
+        // 检查GPS是否开启
+        if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+            showToast("请开启GPS定位服务");
+            // 跳转到GPS设置界面
+            Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            activity.startActivity(intent);
+            return;
+        }
+        
+        // 初始化位置监听器
+        locationListener = new LocationListener() {
+            @Override
+            public void onLocationChanged(Location location) {
+                // 位置更新时回调
+                double latitude = location.getLatitude();
+                double longitude = location.getLongitude();
+                float accuracy = location.getAccuracy();
+                
+                // 构建位置信息JSON
+                String locationJson = "{\"latitude\":\"" + latitude + "\",\"longitude\":\"" + longitude + "\",\"accuracy\":\"" + accuracy + "\"}";
+                Log.d(TAG, "Location updated: " + locationJson);
+                
+                // 调用JavaScript回调函数
+                if (!locationCallbackFunction.isEmpty()) {
+                    final String jsCall = locationCallbackFunction + "(" + locationJson + ");";
+                    activity.runOnUiThread(() -> {
+                        activity.getWebView().loadUrl("javascript:" + jsCall);
+                    });
+                }
+                
+                // 停止定位
+                stopLocationUpdates();
+            }
+            
+            @Override
+            public void onStatusChanged(String provider, int status, Bundle extras) {}
+            
+            @Override
+            public void onProviderEnabled(String provider) {}
+            
+            @Override
+            public void onProviderDisabled(String provider) {
+                showToast("定位服务已关闭，请开启");
+            }
+        };
+        
+        // 尝试获取最近的位置
+        Location lastKnownLocation = null;
+        
+        // 优先获取GPS定位
+        if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+            lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+        }
+        
+        // 如果GPS没有最近位置，尝试获取网络定位
+        if (lastKnownLocation == null && locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+            lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+        }
+        
+        // 如果有最近位置，直接返回
+        if (lastKnownLocation != null) {
+            double latitude = lastKnownLocation.getLatitude();
+            double longitude = lastKnownLocation.getLongitude();
+            float accuracy = lastKnownLocation.getAccuracy();
+            
+            String locationJson = "{\"latitude\":\"" + latitude + "\",\"longitude\":\"" + longitude + "\",\"accuracy\":\"" + accuracy + "\"}";
+            Log.d(TAG, "Using last known location: " + locationJson);
+            
+            if (!locationCallbackFunction.isEmpty()) {
+                final String jsCall = locationCallbackFunction + "(" + locationJson + ");";
+                activity.runOnUiThread(() -> {
+                    activity.getWebView().loadUrl("javascript:" + jsCall);
+                });
+            }
+            
+            // 同时继续监听新位置
+            locationManager.requestLocationUpdates(
+                    LocationManager.GPS_PROVIDER,
+                    LOCATION_UPDATE_MIN_TIME,
+                    LOCATION_UPDATE_MIN_DISTANCE,
+                    locationListener
+            );
+            
+            // 30秒后自动停止监听
+            new Handler().postDelayed(this::stopLocationUpdates, 30000);
+        } else {
+            // 没有最近位置，开始监听新位置
+            showToast("正在获取位置信息...");
+            
+            // 注册位置监听器
+            locationManager.requestLocationUpdates(
+                    LocationManager.GPS_PROVIDER,
+                    LOCATION_UPDATE_MIN_TIME,
+                    LOCATION_UPDATE_MIN_DISTANCE,
+                    locationListener
+            );
+            
+            // 同时尝试网络定位
+            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                locationManager.requestLocationUpdates(
+                        LocationManager.NETWORK_PROVIDER,
+                        LOCATION_UPDATE_MIN_TIME,
+                        LOCATION_UPDATE_MIN_DISTANCE,
+                        locationListener
+                );
+            }
+            
+            // 30秒后自动停止监听
+            new Handler().postDelayed(this::stopLocationUpdates, 30000);
+        }
+    }
+    
+    /**
+     * 停止位置更新
+     */
+    private void stopLocationUpdates() {
+        try {
+            if (locationManager != null && locationListener != null) {
+                locationManager.removeUpdates(locationListener);
+                locationListener = null;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error stopping location updates: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * JavaScript接口：获取位置信息
+     * @param
+     */
+    @JavascriptInterface
+    public void getLocation() {
+        Log.d(TAG, "getLocation called, callback: " );
+        this.locationCallbackFunction = "locationResult";
+        
+        activity.runOnUiThread(() -> {
+            // 检查权限
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                boolean hasFineLocationPermission = ContextCompat.checkSelfPermission(
+                        activity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+                boolean hasCoarseLocationPermission = ContextCompat.checkSelfPermission(
+                        activity, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+                
+                if (hasFineLocationPermission && hasCoarseLocationPermission) {
+                    // 已有权限，开始定位
+                    startLocation();
+                } else {
+                    // 无权限，请求权限
+                    requestLocationPermission();
+                }
+            } else {
+                // Android 6.0以下，直接定位
+                startLocation();
+            }
+        });
+    }
+    
+    /**
+     * 处理权限请求结果
+     */
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            boolean hasFineLocationPermission = false;
+            boolean hasCoarseLocationPermission = false;
+            
+            for (int i = 0; i < permissions.length; i++) {
+                if (permissions[i].equals(Manifest.permission.ACCESS_FINE_LOCATION) && 
+                        grantResults[i] == PackageManager.PERMISSION_GRANTED) {
+                    hasFineLocationPermission = true;
+                } else if (permissions[i].equals(Manifest.permission.ACCESS_COARSE_LOCATION) && 
+                        grantResults[i] == PackageManager.PERMISSION_GRANTED) {
+                    hasCoarseLocationPermission = true;
+                }
+            }
+            
+            if (hasFineLocationPermission && hasCoarseLocationPermission) {
+                // 权限授予，开始定位
+                startLocation();
+            } else {
+                // 权限被拒绝
+                showToast("定位权限被拒绝，请在设置中允许定位权限");
+                
+                // 通知JavaScript定位失败
+                if (!locationCallbackFunction.isEmpty()) {
+                    final String jsCall = locationCallbackFunction + "({\"error\":\"定位权限被拒绝\"});";
+                    activity.runOnUiThread(() -> {
+                        activity.getWebView().loadUrl("javascript:" + jsCall);
+                    });
+                }
+            }
+        }
     }
 
 

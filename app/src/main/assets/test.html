@@ -11,6 +11,7 @@
 <button onclick="scan()">扫一扫</button>
     <input type="text" name="content" id="content"/>
     <button onclick="sendNotice()">发送通知</button>
+    <button onclick="getLocation()">获取定位</button>
 <div id="rsult"></div>
 </div>
 <script >
@@ -24,7 +25,12 @@
       var content =   document.getElementById("content").value;
       JsBridge.sendMessageNotice(content);
     }
-
+   function getLocation(){
+    JsBridge.getLocation();
+   }
+    function locationResult(res){
+       alert(JSON.stringify(res))
+    }
 </script>
 </body>
 </html>
