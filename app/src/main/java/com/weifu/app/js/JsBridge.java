@@ -1184,6 +1184,7 @@ private  static  class PrintWorkHandler extends Handler {
         locationListener = new LocationListener() {
             @Override
             public void onLocationChanged(Location location) {
+                Log.d(TAG, "onLocationChanged: "+location);
                 // 位置更新时回调
                 double latitude = location.getLatitude();
                 double longitude = location.getLongitude();
