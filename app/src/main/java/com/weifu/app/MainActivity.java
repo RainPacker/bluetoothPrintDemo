@@ -101,8 +101,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     String TAG = getClass().getSimpleName();
     // prod
   //  private static final String LOADRL ="http://10.1.4.138:9001/" ;
-    private static final String LOADRL ="file:///android_asset/test.html" ;
-   // private static final String LOADRL ="http://10.94.31.150:31223/" ;
+//    private static final String LOADRL ="file:///android_asset/test.html" ;
+    private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10001;
     ValueCallback<Uri> mFilePathCallback;
@@ -141,7 +141,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     }
 
     @RequiresApi(api = Build.VERSION_CODES.M)
-    @SuppressLint("SetJavaScriptEnabled")
+    @SuppressLint({"SetJavaScriptEnabled", "UnspecifiedRegisterReceiverFlag"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
 
@@ -162,8 +162,16 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         super.onCreate(savedInstanceState);
        // initReceiver();
      //   getPermission();
-        requestPermissions();
-        createClient();
+        new Thread(()->{
+            requestPermissions();
+            createClient();
+        }).start();
+
+        new Thread(()->{
+            Looper.prepare();
+            updateApk();
+            Looper.loop();
+        }).start();
 //        try {
 //            EMDKResults results = EMDKManager.getEMDKManager(MainActivity.this, this);
 //            if (results.statusCode != EMDKResults.STATUS_CODE.SUCCESS) {
@@ -270,20 +278,24 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
                 return false;
             }
         });
-        jsBridge = new JsBridge(this);
-        // 注册配置文件 斑马专用
-        jsBridge.createProfile();
-        jsBridge.startFingerprintAuthentication();
-        // 注册广播
-        IntentFilter actionFilters = new IntentFilter();
-        actionFilters.addAction(JsBridge.ACTION_IDATA_SCANRESULT);
-        actionFilters.addAction(JsBridge.ACTION_ZEBRA_SCANRESULT);
-        actionFilters.addAction(Intent.ACTION_SCREEN_ON);
-        actionFilters.addAction( BluetoothAdapter.ACTION_STATE_CHANGED);
-        actionFilters.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
-        registerReceiver(jsBridge,actionFilters);
+        new Thread(()->{
+            jsBridge = new JsBridge(this);
+            // 注册配置文件 斑马专用
+            jsBridge.createProfile();
+            jsBridge.startFingerprintAuthentication();
+            // 注册广播
+            IntentFilter actionFilters = new IntentFilter();
+            actionFilters.addAction(JsBridge.ACTION_IDATA_SCANRESULT);
+            actionFilters.addAction(JsBridge.ACTION_ZEBRA_SCANRESULT);
+            actionFilters.addAction(Intent.ACTION_SCREEN_ON);
+            actionFilters.addAction( BluetoothAdapter.ACTION_STATE_CHANGED);
+            actionFilters.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+            registerReceiver(jsBridge,actionFilters);
+           this.runOnUiThread(()->{
+               webView.addJavascriptInterface(jsBridge, "JsBridge");
+           });
+        }).start();
 
-        webView.addJavascriptInterface(jsBridge, "JsBridge");
 
         webView.setWebViewClient(new MyClient());
         webView.setWebChromeClient(new MyWebChromeClient());
@@ -310,7 +322,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         webView.getSettings().getAllowUniversalAccessFromFileURLs();
         webView.getSettings().getAllowFileAccessFromFileURLs();
        // webView.setOnKeyListener((view, keyCode,  event)-> this.onKeyDown(keyCode,event));
-        updateApk();
+
         try {
             PackageManager pm = this.getPackageManager();
             PackageInfo info = pm.getPackageInfo("com.android.webview", 0);
@@ -320,12 +332,15 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         }
 
       // nfc 初始化
+        new Thread(()->{
+            try {
+                NfcUtils.NfcInit(this);
+            } catch (Exception e) {
+                Log.e("nfcinit",e.getMessage());
+            }
+        }).start();
 
-        try {
-            NfcUtils.NfcInit(this);
-        } catch (Exception e) {
-           Log.e("nfcinit",e.getMessage());
-        }
+
     }
 
     @Override

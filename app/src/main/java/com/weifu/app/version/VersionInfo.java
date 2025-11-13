@@ -1,5 +1,7 @@
 package com.weifu.app.version;
- 
+
+import com.google.gson.annotations.SerializedName;
+
 /**
  * 软件版本信息对象
  *
@@ -12,8 +14,10 @@ public class VersionInfo {
 	// 版本更新时间
 	private String updateTime;
 	// 新版本更新下载地址
+    @SerializedName("downloadUrl")
 	private String downloadURL;
 	// 更新描述信息
+    @SerializedName("remark")
 	private String displayMessage;
 	// 版本号
 	private int versionCode;
