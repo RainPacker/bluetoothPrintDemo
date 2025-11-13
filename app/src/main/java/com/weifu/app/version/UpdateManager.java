@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.ref.WeakReference;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -51,7 +52,10 @@ import com.weifu.utils.XMLParserUtil;
 public class UpdateManager {
  
 	// 上下文对象
-	private Context mContext;
+	private WeakReference<Context> mContextRef;
+
+    // 上下文对象
+    private Context mContext;
 	//更新版本信息对象
 	private VersionInfo info = null;
 	// 下载进度条
@@ -83,7 +87,8 @@ public class UpdateManager {
 	 * @param context
 	 */
 	public UpdateManager(Context context) {
-		this.mContext = context;
+		this.mContextRef = new WeakReference(context);
+        this.mContext = this.mContextRef.get();
 		NotificationUtil.createUpdateNotificationChannel(context);
 	}
  

@@ -171,12 +171,14 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
             updateApk();
             Looper.loop();
         }).start();
-
+       new Thread(()->{
+           requestPermissions();
+           createClient();
+       }).start();
 
        // initReceiver();
      //   getPermission();
-        requestPermissions();
-        createClient();
+
 //        try {
 //            EMDKResults results = EMDKManager.getEMDKManager(MainActivity.this, this);
 //            if (results.statusCode != EMDKResults.STATUS_CODE.SUCCESS) {
@@ -228,25 +230,31 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
             }
         });
 
-        //该方法解决的问题是打开浏览器不调用系统浏览器，直接用 webView 打开
-        jsBridge = new JsBridge(this,getString(R.string.socket_url));
-        // 注册配置文件 斑马专用
-        jsBridge.createProfile();
-        // 注册广播
-        IntentFilter actionFilters = new IntentFilter();
-        actionFilters.addAction(JsBridge.ACTION_IDATA_SCANRESULT);
-        actionFilters.addAction(JsBridge.ACTION_ZEBRA_SCANRESULT);
-        actionFilters.addAction(JsBridge.ACTION_SOCKET_MSG);
-        actionFilters.addAction(Intent.ACTION_SCREEN_ON);
-        actionFilters.addAction( BluetoothAdapter.ACTION_STATE_CHANGED);
-        actionFilters.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            registerReceiver(jsBridge,actionFilters, Context.RECEIVER_EXPORTED);
-        }else {
-            registerReceiver(jsBridge,actionFilters);
-        }
 
-        webView.addJavascriptInterface(jsBridge, "JsBridge");
+            //该方法解决的问题是打开浏览器不调用系统浏览器，直接用 webView 打开
+            jsBridge = new JsBridge(this,getString(R.string.socket_url));
+            new Thread(()->{
+                // 注册配置文件 斑马专用
+                jsBridge.createProfile();
+                // 注册广播
+                IntentFilter actionFilters = new IntentFilter();
+                actionFilters.addAction(JsBridge.ACTION_IDATA_SCANRESULT);
+                actionFilters.addAction(JsBridge.ACTION_ZEBRA_SCANRESULT);
+                actionFilters.addAction(JsBridge.ACTION_SOCKET_MSG);
+                actionFilters.addAction(Intent.ACTION_SCREEN_ON);
+                actionFilters.addAction( BluetoothAdapter.ACTION_STATE_CHANGED);
+                actionFilters.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    registerReceiver(jsBridge,actionFilters, Context.RECEIVER_EXPORTED);
+                }else {
+                    registerReceiver(jsBridge,actionFilters);
+                }
+            }).start();
+           webView.addJavascriptInterface(jsBridge, "JsBridge");
+
+
+
+
 
         webView.setWebViewClient(new MyClient());
         webView.setWebChromeClient(new MyWebChromeClient());
