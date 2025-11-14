@@ -40,8 +40,16 @@ import androidx.core.graphics.PathUtils;
 import com.weifu.app.BuildConfig;
 import com.weifu.app.R;
 import com.weifu.app.ui.custom.CustomDialog;
+import com.weifu.app.utils.AppInfoUtils;
+import com.weifu.app.utils.GsonParser;
 import com.weifu.app.utils.NotificationUtil;
 import com.weifu.utils.XMLParserUtil;
+
+import okhttp3.HttpUrl;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.logging.HttpLoggingInterceptor;
 
 
 /**
@@ -71,6 +79,7 @@ public class UpdateManager {
  
 	private static final String saveFileName = "wps.apk";
 	private static final int MSG_ID = 1101;
+    private String TAG = "UpdateManager";
 
 	//下载地址
 	private String downloadURL = null;
@@ -79,6 +88,11 @@ public class UpdateManager {
 	 */
 //	private 	AlertDialog downloadDg;
 	private 	CustomDialog downloadDg;
+    private static OkHttpClient client = createEnvironmentAwareClient(true);
+    /**
+     * 是否强制更新
+     */
+    private  Boolean isForce;
 
  
 	/**
@@ -91,6 +105,20 @@ public class UpdateManager {
         this.mContext = this.mContextRef.get();
 		NotificationUtil.createUpdateNotificationChannel(context);
 	}
+    // 根据环境配置日志级别
+    public static OkHttpClient createEnvironmentAwareClient(boolean isDebug) {
+        HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor();
+
+        if (isDebug) {
+            loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
+        } else {
+            loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BASIC);
+        }
+
+        return new OkHttpClient.Builder()
+                .addInterceptor(loggingInterceptor)
+                .build();
+    }
  
 	public void checkUpdate(String version_url) throws IOException {
 		// 从服务端获取版本信息
@@ -493,4 +521,24 @@ public class UpdateManager {
 		return  null;
 
 	}
+
+    private VersionInfo getVersionInfoFromServerNew(String version_url) throws IOException {
+        HttpUrl url = HttpUrl.parse(version_url).newBuilder()
+                .addQueryParameter("system", AppInfoUtils.getCurrentPackageName(mContext))
+                .build();
+        Request request = new Request.Builder()
+                .url(url)
+                .build();
+        try( Response response = client.newCall(request).execute()){
+            if (response.isSuccessful() && response.body() != null) {
+                String json = response.body().string();
+                return GsonParser.fromJson(json, VersionInfo.class);
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "getVersionInfoFromServerNew: ",e);
+        }
+
+        return  null;
+
+    }
 }
