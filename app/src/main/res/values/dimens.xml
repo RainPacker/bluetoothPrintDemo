@@ -7,4 +7,12 @@
     <dimen name="padding_10">10dp</dimen>
     <dimen name="margin_10">10dp</dimen>
     <dimen name="size_18">18sp</dimen>
+    <!-- 新增dimen资源 -->
+    <dimen name="padding_20">20dp</dimen>
+    <dimen name="margin_15">15dp</dimen>
+    <dimen name="margin_20">20dp</dimen>
+    <dimen name="size_12">12sp</dimen>
+    <dimen name="margin_5">5dp</dimen>
+    <dimen name="margin_8">8dp</dimen>
+    <dimen name="padding_5">5dp</dimen>
 </resources>

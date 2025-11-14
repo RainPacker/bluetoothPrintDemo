@@ -14,6 +14,7 @@ import java.util.List;
 import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.app.AlertDialog.Builder;
+import android.app.Dialog;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
@@ -192,18 +193,30 @@ public class UpdateManager {
     }
 
     public void showErrorDialog() {
-        CustomDialog.Builder builder = new CustomDialog.Builder(mContext);
-        builder.setTitle("提示");
-        builder.setInfo("网络或软件版本信息有错误，数据无法下载,请联系管理员");
-        builder.setButtonConfirm("确定", new View.OnClickListener() {
-
+//        CustomDialog.Builder builder = new CustomDialog.Builder(mContext);
+//        builder.setTitle("提示");
+//        builder.setInfo("网络或软件版本信息有错误，数据无法下载,请联系管理员");
+//        builder.setButtonConfirm("确定", new View.OnClickListener() {
+//
+//            @Override
+//            public void onClick(View customDgv) {
+//
+//            }
+//        });
+//        CustomDialog customDg = builder.create();
+//        customDg.show();
+      Dialog dg = CustomDialog.Builder.createUpdateDialog(mContext, 1, "2.30.0", new String[]{"更新了"}, new View.OnClickListener() {
             @Override
-            public void onClick(View customDgv) {
+            public void onClick(View v) {
+
+            }
+        }, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
 
             }
         });
-        CustomDialog customDg = builder.create();
-        customDg.show();
+      dg.show();
     }
 
     /**

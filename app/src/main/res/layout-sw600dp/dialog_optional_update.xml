@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="500dp"
+        android:layout_height="wrap_content"
+        android:background="@drawable/rect_s_rounded_white"
+        android:orientation="vertical"
+        android:padding="@dimen/padding_20">
+
+        <!-- 图标部分 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:layout_marginBottom="@dimen/margin_15">
+            <ImageView
+                android:id="@+id/iv_update_icon"
+                android:layout_width="80dp"
+                android:layout_height="80dp"
+                android:src="@drawable/ic_update" />
+        </LinearLayout>
+
+        <!-- 标题部分 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="vertical">
+            <TextView
+                android:id="@+id/tv_update_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="发现新版本"
+                android:textSize="@dimen/size_18"
+                android:textStyle="bold" />
+            <TextView
+                android:id="@+id/tv_update_version"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="v2.1.0"
+                android:textSize="@dimen/size_12"
+                android:layout_marginTop="@dimen/margin_5"
+                android:textColor="@android:color/darker_gray" />
+        </LinearLayout>
+
+        <!-- 更新内容部分 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="@dimen/margin_15">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="更新内容"
+                android:textSize="@dimen/size_14"
+                android:textColor="@android:color/darker_gray" />
+            
+            <!-- 动态更新内容容器 -->
+            <LinearLayout
+                android:id="@+id/update_contents_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="@dimen/margin_8">
+                <!-- 动态更新内容将在这里添加 -->
+                <!-- 保留原有的TextView作为默认显示，确保向后兼容 -->
+                <TextView
+                    android:id="@+id/tv_update_content_1"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="全新界面设计，带来更好的视觉体验"
+                    android:textSize="@dimen/size_14"
+                    android:drawableLeft="@drawable/icon_check" 
+                    android:drawablePadding="@dimen/padding_5" />
+                <TextView
+                    android:id="@+id/tv_update_content_2"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="性能优化，提升运行速度"
+                    android:textSize="@dimen/size_14"
+                    android:layout_marginTop="@dimen/margin_5"
+                    android:drawableLeft="@drawable/icon_check" 
+                    android:drawablePadding="@dimen/padding_5" />
+                <TextView
+                    android:id="@+id/tv_update_content_3"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="修复已知问题，提升稳定性"
+                    android:textSize="@dimen/size_14"
+                    android:layout_marginTop="@dimen/margin_5"
+                    android:drawableLeft="@drawable/icon_check" 
+                    android:drawablePadding="@dimen/padding_5" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 按钮部分 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="@dimen/margin_15">
+            <Button
+                android:id="@+id/btn_optional_update"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:text="立即更新"
+                android:textColor="@android:color/white"
+                android:textSize="@dimen/size_16"
+                android:background="@drawable/button_blue_l_rounded_selector" />
+            
+            <Button
+                android:id="@+id/btn_later_update"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:text="稍后再说"
+                android:textColor="@color/black"
+                android:textSize="@dimen/size_16"
+                android:layout_marginTop="@dimen/margin_10"
+                android:background="@drawable/button_gray_l_rounded_selector" />
+        </LinearLayout>
+
+        <!-- Wi-Fi提示文本 -->
+        <TextView
+            android:id="@+id/tv_wifi_tip"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="建议在Wi-Fi环境下更新"
+            android:textSize="@dimen/size_12"
+            android:textColor="@android:color/darker_gray"
+            android:gravity="center"
+            android:layout_marginTop="@dimen/margin_10" />
+
+    </LinearLayout>
+
+</LinearLayout>
