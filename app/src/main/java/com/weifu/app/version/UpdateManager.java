@@ -29,6 +29,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
 import android.view.View;
@@ -193,51 +194,49 @@ public class UpdateManager {
     }
 
     public void showErrorDialog() {
-//        CustomDialog.Builder builder = new CustomDialog.Builder(mContext);
-//        builder.setTitle("提示");
-//        builder.setInfo("网络或软件版本信息有错误，数据无法下载,请联系管理员");
-//        builder.setButtonConfirm("确定", new View.OnClickListener() {
-//
-//            @Override
-//            public void onClick(View customDgv) {
-//
-//            }
-//        });
-//        CustomDialog customDg = builder.create();
-//        customDg.show();
-      Dialog dg = CustomDialog.Builder.createUpdateDialog(mContext, 0, "2.30.0", new String[]{"更新了比比防卫人䏌地地替枯干一经以发了民同我人有的和主产不不为这工要在"}, new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
+        // Dialog 必须在主线程创建和显示
+        MainActivity mainActivity = (MainActivity) mContext;
+        mainActivity.runOnUiThread(() -> {
+            Dialog dg = CustomDialog.Builder.createUpdateDialog(mContext, 0, "2.30.0", 
+                new String[]{"更新了比比防卫人䏌地地替枯干一经以发了民同我人有的和主产不不为这工要在"}, 
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
 
-            }
-        }, new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
+                    }
+                }, new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
 
-            }
+                    }
+                });
+            dg.show();
         });
-      dg.show();
     }
 
     /**
      * 提示更新对话框
      */
     private void showUpdateDialog() {
-        int updateType = isForce ? 0: 1;
-        Dialog dg = CustomDialog.Builder.createUpdateDialog(mContext, updateType, info.getVersion(), new String[]{info.getDisplayMessage()}, new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                showDownloadDialog();
-            }
-        }, new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
+        // Dialog 必须在主线程创建和显示
+        MainActivity mainActivity = (MainActivity) mContext;
+        mainActivity.runOnUiThread(() -> {
+            int updateType = isForce ? 0 : 1;
+            Dialog dg = CustomDialog.Builder.createUpdateDialog(mContext, updateType, 
+                info.getVersion(), new String[]{info.getDisplayMessage()}, 
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        showDownloadDialog();
+                    }
+                }, new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
 
-            }
+                    }
+                });
+            dg.show();
         });
-        dg.show();
-
-
     }
 
 
@@ -371,10 +370,10 @@ public class UpdateManager {
     };
 
     /**
-     * 声明一个handler来跟进进度条
+     * 声明一个handler来跟进进度条（使用主线程Looper）
      */
     @SuppressLint("HandlerLeak")
-    public Handler handler = new Handler() {
+    public Handler handler = new Handler(Looper.getMainLooper()) {
         @SuppressLint("HandlerLeak")
         public void handleMessage(Message msg) {
             MainActivity mainActivity = (MainActivity) mContext;

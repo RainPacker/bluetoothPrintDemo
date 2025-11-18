@@ -144,203 +144,219 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     @SuppressLint({"SetJavaScriptEnabled", "UnspecifiedRegisterReceiverFlag"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-
-//        if (checkBiometricSupport()) {
-//            createAndInitializeKey();
-//            initCipher();
-//        }
-     //   XUI.initTheme(this);
-//        this.requestWindowFeature(Window.FEATURE_NO_TITLE);
-//        this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-//                WindowManager.LayoutParams.FLAG_FULLSCREEN);
-  //      this.makeStatusBarTransparent(this);
-     //   setFullscreen(true, true);
-       // setAndroidNativeLightStatusBar(this, true);
-
-
+        // 设置导航栏颜色
         getWindow().setNavigationBarColor(Color.parseColor("#004098"));
         super.onCreate(savedInstanceState);
-       // initReceiver();
-     //   getPermission();
-        new Thread(()->{
-            requestPermissions();
-            createClient();
-        }).start();
-
-        new Thread(()->{
-            Looper.prepare();
-            updateApk();
-            Looper.loop();
-        }).start();
-//        try {
-//            EMDKResults results = EMDKManager.getEMDKManager(MainActivity.this, this);
-//            if (results.statusCode != EMDKResults.STATUS_CODE.SUCCESS) {
-//                Log.e(TAG,"EMDKManager object request failed!");
-//               // return;
-//            }
-//        }catch (Exception e){
-//            Log.e(TAG, "onCreate: "+e.getMessage(),e);
-//        }
-
-        //隐藏ActionBar
+        
+        // 隐藏ActionBar
         Objects.requireNonNull(getSupportActionBar()).hide();
-
+        
+        // 设置布局
         setContentView(R.layout.activity_main);
-        //WebView加载页面
-        webView = findViewById(R.id.web_view);
-        webView.getSettings().setJavaScriptEnabled(true);
-        webView.setWebViewClient(new WebViewClient());
-        webView.setWebChromeClient(new WebChromeClient() {
-            // Andorid 4.1----4.4
-            public void openFileChooser(ValueCallback<Uri> uploadFile, String acceptType, String capture) {
+        
+        // 初始化基础UI组件
+        initViews();
+        
+        // 初始化WebView（关键路径）
+        initWebView();
+        
+        // 延迟加载非关键组件
+        initBackgroundTasks();
+    }
 
-                mFilePathCallback = uploadFile;
-                handle(uploadFile);
-            }
-
-            // for 5.0+
-            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
-                if (mFilePathCallbackArray != null) {
-                    mFilePathCallbackArray.onReceiveValue(null);
-                }
-                mFilePathCallbackArray = filePathCallback;
-                handleup(filePathCallback);
-                return true;
-            }
-
-            private void handle(ValueCallback<Uri> uploadFile) {
-                Intent intent = new Intent(Intent.ACTION_PICK);
-                // 设置允许上传的文件类型
-                intent.setType("*/*");
-                startActivityForResult(intent, PICK_REQUEST);
-            }
-
-            private void handleup(ValueCallback<Uri[]> uploadFile) {
-                Intent intent = new Intent(Intent.ACTION_PICK);
-                intent.setType("*/*");
-                startActivityForResult(intent, PICK_REQUEST);
-            }
-        });
-
-        // wevView监听 H5 页面的下载事件
-        webView.setDownloadListener(new DownloadListener() {
-
-            public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
-
-                DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-
-                String cookies = CookieManager.getInstance().getCookie(url);
-
-                request.addRequestHeader("cookie", cookies);
-
-                request.addRequestHeader("User-Agent", userAgent);
-
-                request.setDescription("下载中...");
-
-                request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimetype));
-
-                request.allowScanningByMediaScanner(); request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED); request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, contentDisposition, mimetype));
-
-                DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
-
-                manager.enqueue(request);
-
-                showMessage("下载中...");
-
-                //Notif if success
-
-                BroadcastReceiver onComplete = new BroadcastReceiver() {
-
-                    public void onReceive(Context ctxt, Intent intent) {
-
-                        showMessage("下载完成");
-
-                        unregisterReceiver(this);
-
-                    }};
-
-                registerReceiver(onComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
-
-            }
-
-        });
-
-        //该方法解决的问题是打开浏览器不调用系统浏览器，直接用 webView 打开
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                // 解决webview cangoBack() 失效的问题
-                if (Build.VERSION.SDK_INT < 26) {
-                    view.loadUrl(url);
-                    return true;
-                }
-
-                return false;
-            }
-        });
-        new Thread(()->{
-            jsBridge = new JsBridge(this);
-            // 注册配置文件 斑马专用
-            jsBridge.createProfile();
-            jsBridge.startFingerprintAuthentication();
-            // 注册广播
-            IntentFilter actionFilters = new IntentFilter();
-            actionFilters.addAction(JsBridge.ACTION_IDATA_SCANRESULT);
-            actionFilters.addAction(JsBridge.ACTION_ZEBRA_SCANRESULT);
-            actionFilters.addAction(Intent.ACTION_SCREEN_ON);
-            actionFilters.addAction( BluetoothAdapter.ACTION_STATE_CHANGED);
-            actionFilters.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
-            registerReceiver(jsBridge,actionFilters);
-           this.runOnUiThread(()->{
-               webView.addJavascriptInterface(jsBridge, "JsBridge");
-           });
-        }).start();
-
-
-        webView.setWebViewClient(new MyClient());
-        webView.setWebChromeClient(new MyWebChromeClient());
-
-        // 这里填你需要打包的 H5 页面链接
-        webView.loadUrl(LOADRL);
-//        shapeLoadingDialog = new ShapeLoadingDialog(this);
-//        shapeLoadingDialog.setLoadingText("加载中...");
+    /**
+     * 初始化基础视图组件
+     */
+    private void initViews() {
         progressBar = findViewById(R.id.progress_bar);
         progressBar.setVisibility(View.VISIBLE);
         loadingView = findViewById(R.id.loadView);
+        webView = findViewById(R.id.web_view);
+    }
 
-
-
-        //显示一些小图片（头像）
+    /**
+     * 初始化WebView配置（关键路径，优先加载）
+     */
+    @SuppressLint("SetJavaScriptEnabled")
+    private void initWebView() {
+        // WebView基础配置
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setUseWideViewPort(true);
+        settings.setAllowFileAccess(true);
+        settings.getAllowUniversalAccessFromFileURLs();
+        settings.getAllowFileAccessFromFileURLs();
+        
+        // 显示小图片（头像）
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            webView.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         }
-        // 允许使用 localStorage sessionStorage
-        webView.getSettings().setDomStorageEnabled(true);
-        // 是否支持 html 的 meta 标签
-        webView.getSettings().setUseWideViewPort(true);
-        webView.getSettings().setAllowFileAccess(true);
-        webView.getSettings().getAllowUniversalAccessFromFileURLs();
-        webView.getSettings().getAllowFileAccessFromFileURLs();
-       // webView.setOnKeyListener((view, keyCode,  event)-> this.onKeyDown(keyCode,event));
 
+        // 设置WebViewClient和WebChromeClient
+        webView.setWebViewClient(new MyClient());
+        webView.setWebChromeClient(new MyWebChromeClient());
+        
+        // 设置下载监听
+        webView.setDownloadListener((url, userAgent, contentDisposition, mimetype, contentLength) -> {
+            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+            String cookies = CookieManager.getInstance().getCookie(url);
+            request.addRequestHeader("cookie", cookies);
+            request.addRequestHeader("User-Agent", userAgent);
+            request.setDescription("下载中...");
+            request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimetype));
+            request.allowScanningByMediaScanner();
+            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, 
+                    URLUtil.guessFileName(url, contentDisposition, mimetype));
+            
+            DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+            manager.enqueue(request);
+            showMessage("下载中...");
+            
+            BroadcastReceiver onComplete = new BroadcastReceiver() {
+                public void onReceive(Context ctxt, Intent intent) {
+                    showMessage("下载完成");
+                    unregisterReceiver(this);
+                }
+            };
+            registerReceiver(onComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+        });
+        
+        // 立即加载URL（提前加载）
+        webView.loadUrl(LOADRL);
+        
+        // 打印WebView版本信息
+        logWebViewVersion();
+    }
+
+    /**
+     * 初始化后台任务（非关键路径，延迟执行）
+     */
+    private void initBackgroundTasks() {
+        // 使用Handler延迟执行非关键任务
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            // 异步初始化蓝牙和权限
+            new Thread(() -> {
+                requestPermissions();
+                createClient();
+            }).start();
+            
+            // 异步初始化JsBridge
+            new Thread(this::initJsBridge).start();
+            
+            // 异步初始化NFC
+            new Thread(() -> {
+                try {
+                    NfcUtils.NfcInit(MainActivity.this);
+                } catch (Exception e) {
+                    Log.e("nfcinit", e.getMessage());
+                }
+            }).start();
+            
+            // 延迟检查版本更新（降低优先级）
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                new Thread(this::updateApk).start();
+            }, 3000); // 3秒后再检查更新
+            
+        }, 100); // 延迟100ms执行后台任务
+    }
+
+    /**
+     * 初始化JsBridge
+     */
+    private void initJsBridge() {
+        jsBridge = new JsBridge(this);
+        // 注册配置文件 斑马专用
+        jsBridge.createProfile();
+        jsBridge.startFingerprintAuthentication();
+        
+        // 注册广播
+        IntentFilter actionFilters = new IntentFilter();
+        actionFilters.addAction(JsBridge.ACTION_IDATA_SCANRESULT);
+        actionFilters.addAction(JsBridge.ACTION_ZEBRA_SCANRESULT);
+        actionFilters.addAction(Intent.ACTION_SCREEN_ON);
+        actionFilters.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
+        actionFilters.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+        registerReceiver(jsBridge, actionFilters);
+        
+        // 在主线程添加JavaScript接口
+        runOnUiThread(() -> {
+            webView.addJavascriptInterface(jsBridge, "JsBridge");
+        });
+    }
+
+    /**
+     * 打印WebView版本信息
+     */
+    private void logWebViewVersion() {
         try {
-            PackageManager pm = this.getPackageManager();
+            PackageManager pm = getPackageManager();
             PackageInfo info = pm.getPackageInfo("com.android.webview", 0);
-            Log.d(TAG, "onCreate:webview version: "+info.versionName);
+            Log.d(TAG, "onCreate:webview version: " + info.versionName);
         } catch (PackageManager.NameNotFoundException e) {
             Log.e("WebViewVersionFetcher", "Package not found: " + e.getMessage());
         }
+    }
 
-      // nfc 初始化
-        new Thread(()->{
-            try {
-                NfcUtils.NfcInit(this);
-            } catch (Exception e) {
-                Log.e("nfcinit",e.getMessage());
+    /**
+     * 自定义WebChromeClient
+     */
+    class MyWebChromeClient extends WebChromeClient {
+        // Andorid 4.1----4.4
+        public void openFileChooser(ValueCallback<Uri> uploadFile, String acceptType, String capture) {
+            mFilePathCallback = uploadFile;
+            handle(uploadFile);
+        }
+
+        // for 5.0+
+        public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+            if (mFilePathCallbackArray != null) {
+                mFilePathCallbackArray.onReceiveValue(null);
             }
-        }).start();
+            mFilePathCallbackArray = filePathCallback;
+            handleup(filePathCallback);
+            return true;
+        }
 
+        private void handle(ValueCallback<Uri> uploadFile) {
+            Intent intent = new Intent(Intent.ACTION_PICK);
+            intent.setType("*/*");
+            startActivityForResult(intent, PICK_REQUEST);
+        }
 
+        private void handleup(ValueCallback<Uri[]> uploadFile) {
+            Intent intent = new Intent(Intent.ACTION_PICK);
+            intent.setType("*/*");
+            startActivityForResult(intent, PICK_REQUEST);
+        }
+        
+        // 监听网页进度
+        @Override
+        public void onProgressChanged(WebView view, int newProgress) {
+            super.onProgressChanged(view, newProgress);
+            Log.d(TAG, "newProgress:" + newProgress);
+            if (newProgress == PROCESS_BAR_MAX) {
+                progressBar.setVisibility(View.GONE);
+                loadingView.setVisibility(View.GONE);
+            }
+            progressBar.setProgress(newProgress);
+        }
+    }
+
+    /**
+     * 自定义WebViewClient
+     */
+    class MyClient extends WebViewClient {
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView view, String url) {
+            // 解决webview cangoBack() 失效的问题
+            if (Build.VERSION.SDK_INT < 26) {
+                view.loadUrl(url);
+                return true;
+            }
+            return false;
+        }
     }
 
     @Override
@@ -644,25 +660,6 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
    public BluetoothClient getClient(){
         return this.mClient;
    }
-    class MyClient extends WebViewClient {
-    }
-    class MyWebChromeClient extends WebChromeClient {
-        // 监听网页进度 newProgress进度值在0-100
-        @Override
-        public void onProgressChanged(WebView view, int newProgress) {
-            super.onProgressChanged(view, newProgress);
-            Log.d(TAG, "newProgress:" + newProgress);
-            // 进行进度条更新
-            if (newProgress == PROCESS_BAR_MAX) {
-              //  shapeLoadingDialog.dismiss();
-
-                progressBar.setVisibility(View.GONE);
-                loadingView.setVisibility(View.GONE);
-            }
-            progressBar.setProgress(newProgress);
-            // 如果想展示加载动画，则增加一个drawable布局后，在onCreate时展示，在progress=100时View.GONE即可
-        }
-    }
 
     private void requestPermissions() {
         PermissionsManager.getInstance().requestAllManifestPermissionsIfNecessary(this, permissionsResultAction);
@@ -746,22 +743,21 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
 
     /**
-     * 更新应用
+     * 更新应用（异步执行）
      */
-    private void updateApk(){
-        if (android.os.Build.VERSION.SDK_INT > 9) {
-            StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
-            StrictMode.setThreadPolicy(policy);
-        }
-
-        // 版本更新检查
-        UpdateManager um = new UpdateManager(MainActivity.this);
+    private void updateApk() {
         try {
-            um.checkUpdate(this.getString(R.string.version_url));
-        } catch (IOException e) {
-            e.printStackTrace();
+            if (android.os.Build.VERSION.SDK_INT > 9) {
+                StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
+                StrictMode.setThreadPolicy(policy);
+            }
+            
+            // 版本更新检查
+            UpdateManager um = new UpdateManager(MainActivity.this);
+            um.checkUpdate(getString(R.string.version_url));
+        } catch (Exception e) {
+            Log.e(TAG, "updateApk error: ", e);
         }
-
     }
 
 
