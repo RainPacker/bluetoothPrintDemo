@@ -115,7 +115,7 @@
                 android:id="@+id/btn_optional_update"
                 android:layout_width="match_parent"
                 android:layout_height="45dp"
-                android:text="立即更新"
+                android:text="@string/update_now"
                 android:textColor="@android:color/white"
                 android:textSize="@dimen/size_16"
                 android:background="@drawable/button_blue_l_rounded_selector" />
@@ -125,7 +125,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="45dp"
                 android:layout_marginTop="@dimen/margin_10"
-                android:text="稍后再说"
+                android:text="@string/update_later"
                 android:textColor="@color/black"
                 android:textSize="@dimen/size_16"
                 android:background="@drawable/button_gray1_l_rounded_selector" />
