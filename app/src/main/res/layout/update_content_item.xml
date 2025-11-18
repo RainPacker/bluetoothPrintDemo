@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:paddingVertical="8dp">
+
+    <!-- 勾选图标 -->
+    <ImageView
+        android:id="@+id/update_content_icon"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:src="@drawable/icon_check"
+        android:layout_gravity="center_vertical"
+        android:layout_marginRight="8dp" />
+
+    <!-- 更新内容文本 -->
+    <TextView
+        android:id="@+id/update_content_text"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textSize="14sp"
+        android:textColor="#333333"
+        android:lineSpacingExtra="2dp" />
+
+</LinearLayout>

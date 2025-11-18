@@ -4,11 +4,10 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:gravity="center"
-    android:orientation="horizontal">
+    android:orientation="vertical">
 
     <LinearLayout
-        android:layout_width="600dp"
-        android:layout_margin="20dp"
+        android:layout_width="310dp"
         android:layout_height="wrap_content"
         android:background="@drawable/rect_s_rounded_white"
         android:orientation="vertical">
@@ -51,14 +50,6 @@
                 android:textColor="@android:color/black"
                 android:gravity="center_horizontal"
                 android:textSize="@dimen/size_16" />
-
-            <!-- 自定义视图容器 -->
-            <FrameLayout
-                android:id="@+id/custom_view_container"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:visibility="gone"
-                android:layout_marginTop="@dimen/margin_10"/>
         </LinearLayout>
 
         <LinearLayout
@@ -76,7 +67,7 @@
                 android:layout_height="40dp"
                 android:layout_marginRight="25dp"
                 android:background="@drawable/button_gray_l_rounded_selector"
-                android:textColor="@android:color/white"
+                android:textColor="@android:color/black"
                 android:textSize="@dimen/size_14"
               />
 

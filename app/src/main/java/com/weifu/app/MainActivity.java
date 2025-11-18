@@ -166,149 +166,120 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         setAndroidNativeLightStatusBar(this, true);
 //        getWindow().setNavigationBarColor(Color.parseColor("#004098"));
         super.onCreate(savedInstanceState);
-        new Thread(()->{
-            Looper.prepare();
-            updateApk();
-            Looper.loop();
-        }).start();
-       new Thread(()->{
-           requestPermissions();
-           createClient();
-       }).start();
-
-       // initReceiver();
-     //   getPermission();
-
-//        try {
-//            EMDKResults results = EMDKManager.getEMDKManager(MainActivity.this, this);
-//            if (results.statusCode != EMDKResults.STATUS_CODE.SUCCESS) {
-//                Log.e(TAG,"EMDKManager object request failed!");
-//               // return;
-//            }
-//        }catch (Exception e){
-//            Log.e(TAG, "onCreate: "+e.getMessage(),e);
-//        }
+        
+        // ====== 首屏优化：移除onCreate中的耗时操作，延后执行 ======
 
         //隐藏ActionBar
         Objects.requireNonNull(getSupportActionBar()).hide();
 
         setContentView(R.layout.activity_main);
-        //WebView加载页面
+        
+        // ====== 关键路径：优先初始化WebView并加载URL ======
         webView = findViewById(R.id.web_view);
         webView.getSettings().setJavaScriptEnabled(true);
         
-        // 初始化下载管理器
-        initDownloadManager();
-
-        WindowManager windowManager = (WindowManager) this.getSystemService(Context.WINDOW_SERVICE);
-        DisplayMetrics displayMetrics = new DisplayMetrics();
-        windowManager.getDefaultDisplay().getMetrics(displayMetrics);
-
-        int width = displayMetrics.widthPixels;
-        int height = displayMetrics.heightPixels;
-      //  setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+        // 设置屏幕方向（首屏优化：提前设置避免后续重新布局）
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-//        TelephonyManager telephonyManager = (TelephonyManager) this.getSystemService(Context.TELEPHONY_SERVICE);
-//        if (telephonyManager.getPhoneType() == TelephonyManager.PHONE_TYPE_NONE) {
-//            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-//        } else {
-//            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
-//        }
-        Log.w(TAG, "onCreate: "+ width+"::"+height);
-//        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-        // 横屏
+        
+        // 横屏设置
         webView.getSettings().setLoadWithOverviewMode(true);
         webView.getSettings().setUseWideViewPort(true);
-
-        // wevView监听 H5 页面的下载事件
+        
+        // WebView基础配置
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            webView.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        }
+        webView.getSettings().setDomStorageEnabled(true);
+        webView.getSettings().setAllowFileAccess(true);
+        webView.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
+        
+        // 初始化进度条和加载视图
+        progressBar = findViewById(R.id.progress_bar);
+        progressBar.setVisibility(View.VISIBLE);
+        loadingView = findViewById(R.id.loadView);
+        
+        // 初始化JsBridge（同步初始化，但延迟耗时操作）
+        jsBridge = new JsBridge(this, getString(R.string.socket_url));
+        webView.addJavascriptInterface(jsBridge, "JsBridge");
+        
+        // 设置WebView客户端
+        webView.setWebViewClient(new MyClient());
+        webView.setWebChromeClient(new MyWebChromeClient());
+        
+        // 初始化下载管理器
+        initDownloadManager();
         webView.setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
                 Log.d(TAG, "检测到下载请求: " + url);
-                // 使用自定义下载管理器处理下载
                 mDownloadManager.startDownload(url, userAgent, contentDisposition, mimetype);
             }
         });
-
-
-            //该方法解决的问题是打开浏览器不调用系统浏览器，直接用 webView 打开
-            jsBridge = new JsBridge(this,getString(R.string.socket_url));
-            new Thread(()->{
-                // 注册配置文件 斑马专用
-                jsBridge.createProfile();
-                // 注册广播
-                IntentFilter actionFilters = new IntentFilter();
-                actionFilters.addAction(JsBridge.ACTION_IDATA_SCANRESULT);
-                actionFilters.addAction(JsBridge.ACTION_ZEBRA_SCANRESULT);
-                actionFilters.addAction(JsBridge.ACTION_SOCKET_MSG);
-                actionFilters.addAction(Intent.ACTION_SCREEN_ON);
-                actionFilters.addAction( BluetoothAdapter.ACTION_STATE_CHANGED);
-                actionFilters.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    registerReceiver(jsBridge,actionFilters, Context.RECEIVER_EXPORTED);
-                }else {
-                    registerReceiver(jsBridge,actionFilters);
-                }
-            }).start();
-           webView.addJavascriptInterface(jsBridge, "JsBridge");
-
-
-
-
-
-        webView.setWebViewClient(new MyClient());
-        webView.setWebChromeClient(new MyWebChromeClient());
-
-        // 这里填你需要打包的 H5 页面链接
+        
+        // ====== 关键：立即加载URL，提升首屏速度 ======
         webView.loadUrl(LOADRL);
-//        shapeLoadingDialog = new ShapeLoadingDialog(this);
-//        shapeLoadingDialog.setLoadingText("加载中...");
-        progressBar = findViewById(R.id.progress_bar);
-        progressBar.setVisibility(View.VISIBLE);
-        loadingView = findViewById(R.id.loadView);
-
-
-
-        //显示一些小图片（头像）
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            webView.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        }
-        // 允许使用 localStorage sessionStorage
-        webView.getSettings().setDomStorageEnabled(true);
-        // 是否支持 html 的 meta 标签
-        webView.getSettings().setUseWideViewPort(true);
-        webView.getSettings().setAllowFileAccess(true);
-        webView.getSettings().getAllowUniversalAccessFromFileURLs();
-        webView.getSettings().getAllowFileAccessFromFileURLs();
-        // 禁用缓存
-        webView.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
-        String userAgentString = webView.getSettings().getUserAgentString();
-                Log.d("userAgent",userAgentString);
-
-//        webView.getSettings().setAppCacheEnabled(false);
-       // webView.setOnKeyListener((view, keyCode,  event)-> this.onKeyDown(keyCode,event));
-//        updateApk();
-//        showInfoDialog("","xxx","取消",null,"ok",null);
+        
+        // 键盘适配
         AndroidBug5497Workaround.assistActivity(this);
-//        float navigationBarHeight = getNavigationBarHeight();
-//
-//        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-//        layoutParams.bottomMargin=(int)getNavigationBarHeight();
-//        webView.setLayoutParams(layoutParams);
-        SharedPreferences spf = getSharedPreferences("initFlag",MODE_PRIVATE);
-         isFirst = spf.getBoolean("isFirst", false);
-        Log.d(TAG, "onCreate: isFirst==>"+isFirst);
-        //  createNoticeChannel();
+        
+        // ====== 延迟执行非关键任务 ======
+        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                // 延迟200ms执行非关键初始化任务
+                initNonCriticalTasks();
+            }
+        }, 200);
+
+    }
+    
+    /**
+     * 初始化非关键任务（延迟执行以提升首屏加载速度）
+     */
+    private void initNonCriticalTasks() {
+        // 权限请求
+        new Thread(() -> {
+            requestPermissions();
+            createClient();
+        }).start();
+        
+        // 版本更新检查
+        new Thread(() -> {
+            Looper.prepare();
+            updateApk();
+            Looper.loop();
+        }).start();
+        
+        // 注册广播接收器
+        new Thread(() -> {
+            // 注册配置文件 斑马专用
+            jsBridge.createProfile();
+            // 注册广播
+            IntentFilter actionFilters = new IntentFilter();
+            actionFilters.addAction(JsBridge.ACTION_IDATA_SCANRESULT);
+            actionFilters.addAction(JsBridge.ACTION_ZEBRA_SCANRESULT);
+            actionFilters.addAction(JsBridge.ACTION_SOCKET_MSG);
+            actionFilters.addAction(Intent.ACTION_SCREEN_ON);
+            actionFilters.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
+            actionFilters.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                registerReceiver(jsBridge, actionFilters, Context.RECEIVER_EXPORTED);
+            } else {
+                registerReceiver(jsBridge, actionFilters);
+            }
+        }).start();
+        
+        // 电池优化检查
+        SharedPreferences spf = getSharedPreferences("initFlag", MODE_PRIVATE);
+        isFirst = spf.getBoolean("isFirst", false);
+        Log.d(TAG, "initNonCriticalTasks: isFirst==>" + isFirst);
+        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             boolean ignoringBatteryOptimizations = BatteryOptimizationHelper.isIgnoringBatteryOptimizations(this);
-            if (!ignoringBatteryOptimizations) {
-                if (!isFirst) {
-                    BatteryOptimizationHelper.requestIgnoreBatteryOptimization(this);
-                }
-
+            if (!ignoringBatteryOptimizations && !isFirst) {
+                BatteryOptimizationHelper.requestIgnoreBatteryOptimization(this);
             }
         }
-
     }
 
     @Override
