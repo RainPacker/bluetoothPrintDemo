@@ -239,7 +239,7 @@ public class CustomDialog extends Dialog {
 			
 			// 设置稍后再说按钮
 			// 注意：这里修改了findViewById的参数，确保与布局文件中的ID匹配
-			Button btnLater = layout.findViewById(R.id.btn_later_update);
+			Button btnLater = layout.findViewById(R.id.btn_later);
 			btnLater.setOnClickListener(new View.OnClickListener() {
 				@Override
 				public void onClick(View v) {
@@ -251,8 +251,8 @@ public class CustomDialog extends Dialog {
 			});
 			
 			// 可选更新可以取消
-			dialog.setCancelable(true);
-			dialog.setCanceledOnTouchOutside(true);
+			dialog.setCancelable(false);
+			dialog.setCanceledOnTouchOutside(false);
 		}
 		
 		dialog.setContentView(layout);

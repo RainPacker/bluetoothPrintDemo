@@ -2,6 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:gravity="center"
     android:orientation="vertical">
 
@@ -105,7 +106,7 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:layout_marginTop="@dimen/margin_15">
-            <Button
+            <androidx.appcompat.widget.AppCompatButton
                 android:id="@+id/btn_optional_update"
                 android:layout_width="match_parent"
                 android:layout_height="50dp"
@@ -114,15 +115,15 @@
                 android:textSize="@dimen/size_16"
                 android:background="@drawable/button_blue_l_rounded_selector" />
             
-            <Button
-                android:id="@+id/btn_later_update"
+            <androidx.appcompat.widget.AppCompatButton
+                android:id="@+id/btn_later"
                 android:layout_width="match_parent"
                 android:layout_height="50dp"
                 android:text="稍后再说"
                 android:textColor="@color/black"
                 android:textSize="@dimen/size_16"
                 android:layout_marginTop="@dimen/margin_10"
-                android:background="@drawable/button_gray_l_rounded_selector" />
+                android:background="@drawable/button_gray1_l_rounded_selector" />
         </LinearLayout>
 
         <!-- Wi-Fi提示文本 -->

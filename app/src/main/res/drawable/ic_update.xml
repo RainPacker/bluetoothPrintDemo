@@ -1,17 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
-    <!-- 蓝色背景圆形 -->
-    <circle
-        android:cx="12"
-        android:cy="12"
-        android:r="10"
-        android:fillColor="@color/colorPrimary"/>
+    android:width="20dp"
+    android:height="20dp"
+    android:viewportWidth="20"
+    android:viewportHeight="20">
+    <!-- 蓝色背景带圆角方形 -->
+    <path
+        android:fillColor="#037AFF"
+        android:pathData="M4,1h12a3,3 0 0 1 3,3v12a3,3 0 0 1 -3,3H4a3,3 0 0 1 -3,-3V4a3,3 0 0 1 3,-3z"/>
     <!-- 白色向上箭头 -->
     <path
         android:fillColor="@android:color/white"
-        android:pathData="M12,6l-5,5h3v6h4v-6h3l-5,-5z"/>
+        android:pathData="M10,5l-4,4h2.5v4.5h3v-4.5H14l-4,-4z"/>
 </vector>

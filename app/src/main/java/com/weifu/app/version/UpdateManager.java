@@ -83,7 +83,7 @@ public class UpdateManager {
      * 下载
      */
     private AlertDialog downloadDg;
-    private String TAG = "";
+    private String TAG = "UpdateManager";
 
     private NotificationManager manager;
     private NotificationCompat.Builder builder;
@@ -205,7 +205,7 @@ public class UpdateManager {
 //        });
 //        CustomDialog customDg = builder.create();
 //        customDg.show();
-      Dialog dg = CustomDialog.Builder.createUpdateDialog(mContext, 1, "2.30.0", new String[]{"更新了"}, new View.OnClickListener() {
+      Dialog dg = CustomDialog.Builder.createUpdateDialog(mContext, 0, "2.30.0", new String[]{"更新了比比防卫人䏌地地替枯干一经以发了民同我人有的和主产不不为这工要在"}, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
 
@@ -223,32 +223,21 @@ public class UpdateManager {
      * 提示更新对话框
      */
     private void showUpdateDialog() {
-        CustomDialog.Builder builder = new CustomDialog.Builder(mContext);
-        builder.setTitle("版本更新");
-        builder.setInfo(info.getDisplayMessage());
-
-        builder.setButtonConfirm("下载", new View.OnClickListener() {
+        int updateType = isForce ? 0: 1;
+        Dialog dg = CustomDialog.Builder.createUpdateDialog(mContext, updateType, info.getVersion(), new String[]{info.getDisplayMessage()}, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                // 弹出下载框
                 showDownloadDialog();
-                // 弹出后台通知
-
+            }
+        }, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
 
             }
-
         });
-        if (!isForce) {
-            builder.setButtonCancel("以后再说", new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
+        dg.show();
 
-                }
 
-            });
-        }
-
-        builder.create().show();
     }
 
 
@@ -531,7 +520,7 @@ public class UpdateManager {
                 return GsonParser.fromJson(json, VersionInfo.class);
             }
         } catch (IOException e) {
-            e.printStackTrace();
+
             Log.e(TAG, "getVersionInfoFromServerNew: ",e);
         }
 

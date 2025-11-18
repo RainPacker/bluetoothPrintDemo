@@ -2,6 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:gravity="center"
     android:orientation="vertical">
 
@@ -38,7 +39,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="发现新版本"
+                android:textColor="@color/black"
                 android:textSize="@dimen/size_18"
+                android:textFontWeight="99"
                 android:textStyle="bold" />
             <TextView
                 android:id="@+id/tv_update_version"
@@ -59,7 +62,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="更新亮点"
+                android:text="更新内容"
                 android:textSize="@dimen/size_14"
                 android:textColor="@android:color/darker_gray" />
             
@@ -108,7 +111,7 @@
             android:gravity="center"
             android:orientation="vertical"
             android:layout_marginTop="@dimen/margin_15">
-            <Button
+            <androidx.appcompat.widget.AppCompatButton
                 android:id="@+id/btn_optional_update"
                 android:layout_width="match_parent"
                 android:layout_height="45dp"
@@ -116,20 +119,20 @@
                 android:textColor="@android:color/white"
                 android:textSize="@dimen/size_16"
                 android:background="@drawable/button_blue_l_rounded_selector" />
-            
-            <Button
+
+            <androidx.appcompat.widget.AppCompatButton
                 android:id="@+id/btn_later"
                 android:layout_width="match_parent"
                 android:layout_height="45dp"
-                android:text="稍后再说"
-                android:textColor="@android:color/darker_gray"
-                android:textSize="@dimen/size_16"
                 android:layout_marginTop="@dimen/margin_10"
-                android:background="@drawable/button_gray_l_rounded_selector" />
+                android:text="稍后再说"
+                android:textColor="@color/black"
+                android:textSize="@dimen/size_16"
+                android:background="@drawable/button_gray1_l_rounded_selector" />
         </LinearLayout>
 
         <!-- 底部提示文本 -->
-        <TextView
+<!--        <TextView
             android:id="@+id/tv_network_hint"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -137,7 +140,7 @@
             android:textSize="@dimen/size_12"
             android:textColor="@android:color/darker_gray"
             android:gravity="center"
-            android:layout_marginTop="@dimen/margin_10" />
+            android:layout_marginTop="@dimen/margin_10" />-->
 
     </LinearLayout>
 
