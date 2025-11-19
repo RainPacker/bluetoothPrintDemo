@@ -205,6 +205,7 @@ public class CustomDialog extends Dialog {
 				public void onClick(View v) {
 					if (updateListener != null) {
 						updateListener.onClick(v);
+
 					}
 				}
 			});

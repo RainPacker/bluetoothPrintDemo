@@ -21,8 +21,13 @@ public class VersionInfo {
 	private String displayMessage;
 	// 版本号
 	private int versionCode;
+
 	// apk名称
-	private String apkName;
+    @SerializedName("appName")
+    private String apkName;
+
+    // 是否强制更新 1是
+    private  String isForce;
  
 	public String getVersion() {
 		return version;
@@ -71,5 +76,12 @@ public class VersionInfo {
 	public void setApkName(String apkName) {
 		this.apkName = apkName;
 	}
- 
+
+    public String getIsForce() {
+        return isForce;
+    }
+
+    public void setIsForce(String isForce) {
+        this.isForce = isForce;
+    }
 }

@@ -132,9 +132,11 @@ public class UpdateManager {
     public void checkUpdate(String version_url) throws IOException {
         // 从服务端获取版本信息
         info = getVersionInfoFromServerNew(version_url);
-        setForce(true);
         if (info != null) {
             downloadURL = info.getDownloadURL();
+            Log.d(TAG, "checkUpdate:  强制更新"+info.getIsForce());
+
+            isForce = info.getIsForce().equals("1");
             try {
                 // 获取当前软件包信息
                 PackageInfo pi = mContext.getPackageManager().getPackageInfo(mContext.getPackageName(), PackageManager.GET_CONFIGURATIONS);
@@ -204,7 +206,7 @@ public class UpdateManager {
 
                 @Override
                 public void onClick(View customDgv) {
-
+                    Log.d(TAG, "onClick: 确定关闭");
                 }
             });
             CustomDialog customDg =	builder.create();
@@ -219,7 +221,7 @@ public class UpdateManager {
         // Dialog 必须在主线程创建和显示
         MainActivity mainActivity = (MainActivity) mContext;
         mainActivity.runOnUiThread(() -> {
-            int updateType = isForce ? 0 : 1;
+            int updateType = isForce ? 1 : 0;
             Dialog dg = CustomDialog.Builder.createUpdateDialog(mContext, updateType,
                 info.getVersion(), new String[]{info.getDisplayMessage()},
                 new View.OnClickListener() {
