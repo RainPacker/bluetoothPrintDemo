@@ -5,19 +5,16 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.ref.WeakReference;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.List;
-import java.util.Random;
 
-import android.Manifest;
 import android.annotation.SuppressLint;
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.AlertDialog.Builder;
 import android.app.Dialog;
-import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
@@ -28,30 +25,32 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.pm.ResolveInfo;
-import android.graphics.Color;
-import android.media.SoundPool;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
-import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
-import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
-import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
-import androidx.core.graphics.PathUtils;
 
 import com.weifu.app.BuildConfig;
 import com.weifu.app.MainActivity;
-import com.weifu.app.R;
 import com.weifu.app.ui.custom.CustomDialog;
+import com.weifu.app.utils.AppInfoUtils;
+import com.weifu.app.utils.GsonParser;
 import com.weifu.utils.XMLParserUtil;
+
+import okhttp3.HttpUrl;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.logging.HttpLoggingInterceptor;
 
 
 /**
@@ -63,6 +62,8 @@ public class UpdateManager {
     private static final String CHANNEL_ID = "02";
     private static final int NOTIFICATION_ID = 1;
     // 上下文对象
+    private WeakReference<Context> mContextRef;
+
     private Context mContext;
     //更新版本信息对象
     private VersionInfo info = null;
@@ -83,13 +84,26 @@ public class UpdateManager {
      * 下载
      */
     private AlertDialog downloadDg;
-    private String TAG = "";
+    private String TAG = "UpdateManager";
 
     private NotificationManager manager;
     private NotificationCompat.Builder builder;
 
     private  Boolean isGrant= false;
 
+    private static OkHttpClient client = createEnvironmentAwareClient(true);
+    /**
+     * 是否强制更新
+     */
+    private  Boolean isForce;
+
+    public Boolean getForce() {
+        return isForce;
+    }
+
+    public void setForce(Boolean force) {
+        isForce = force;
+    }
 
     /**
      * 参数为Context(上下文activity)的构造函数
@@ -97,14 +111,32 @@ public class UpdateManager {
      * @param context
      */
     public UpdateManager(Context context) {
-        this.mContext = context;
+        this.mContextRef = new WeakReference<>(context);
+        this.mContext = this.mContextRef.get();
     }
 
+    // 根据环境配置日志级别
+    public static OkHttpClient createEnvironmentAwareClient(boolean isDebug) {
+        HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor();
+
+        if (isDebug) {
+            loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
+        } else {
+            loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BASIC);
+        }
+
+        return new OkHttpClient.Builder()
+                .addInterceptor(loggingInterceptor)
+                .build();
+    }
     public void checkUpdate(String version_url) throws IOException {
         // 从服务端获取版本信息
-        info = getVersionInfoFromServer(version_url);
+        info = getVersionInfoFromServerNew(version_url);
         if (info != null) {
             downloadURL = info.getDownloadURL();
+            Log.d(TAG, "checkUpdate:  强制更新"+info.getIsForce());
+
+            isForce = info.getIsForce().equals("1");
             try {
                 // 获取当前软件包信息
                 PackageInfo pi = mContext.getPackageManager().getPackageInfo(mContext.getPackageName(), PackageManager.GET_CONFIGURATIONS);
@@ -164,47 +196,47 @@ public class UpdateManager {
     }
 
     public void showErrorDialog() {
-        CustomDialog.Builder builder = new CustomDialog.Builder(mContext);
-        builder.setTitle("提示");
-        builder.setInfo("网络或软件版本信息有错误，数据无法下载,请联系管理员");
-        builder.setButtonConfirm("确定", new View.OnClickListener() {
+        // Dialog 必须在主线程创建和显示
+        MainActivity mainActivity = (MainActivity) mContext;
+        mainActivity.runOnUiThread(() -> {
+            CustomDialog.Builder	 builder = new CustomDialog.Builder(mContext);
+            builder.setTitle("提示");
+            builder.setInfo("网络或软件版本信息有错误，数据无法下载,请联系管理员");
+            builder.setButtonConfirm("确定", new View.OnClickListener() {
 
-            @Override
-            public void onClick(View customDgv) {
-
-            }
+                @Override
+                public void onClick(View customDgv) {
+                    Log.d(TAG, "onClick: 确定关闭");
+                }
+            });
+            CustomDialog customDg =	builder.create();
+            customDg.show();
         });
-        CustomDialog customDg = builder.create();
-        customDg.show();
     }
 
     /**
      * 提示更新对话框
      */
     private void showUpdateDialog() {
-        CustomDialog.Builder builder = new CustomDialog.Builder(mContext);
-        builder.setTitle("版本更新");
-        builder.setInfo(info.getDisplayMessage());
+        // Dialog 必须在主线程创建和显示
+        MainActivity mainActivity = (MainActivity) mContext;
+        mainActivity.runOnUiThread(() -> {
+            int updateType = isForce ? 1 : 0;
+            Dialog dg = CustomDialog.Builder.createUpdateDialog(mContext, updateType,
+                info.getVersion(), new String[]{info.getDisplayMessage()},
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        showDownloadDialog();
+                    }
+                }, new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
 
-        builder.setButtonConfirm("下载", new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                // 弹出下载框
-                showDownloadDialog();
-                // 弹出后台通知
-
-
-            }
-
+                    }
+                });
+            dg.show();
         });
-        builder.setButtonCancel("以后再说", new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-
-            }
-
-        });
-        builder.create().show();
     }
 
 
@@ -232,7 +264,7 @@ public class UpdateManager {
         //下载apk
         downloadApk();
         MainActivity content = (MainActivity) mContext;
-        content.sendClickableNotification(mContext,false,"正在下载",100, 0,null);
+      //  content.sendClickableNotification(mContext,false,"正在下载",100, 0,null);
 
     }
 
@@ -254,6 +286,7 @@ public class UpdateManager {
     private Runnable downApkRunnable = new Runnable() {
         @Override
         public void run() {
+            MainActivity mainActivity = (MainActivity) mContext;
             String path = android.os.Environment.getExternalStorageState();
             System.out.println(path);
             if (!android.os.Environment.getExternalStorageState().equals(android.os.Environment.MEDIA_MOUNTED)) {
@@ -267,7 +300,8 @@ public class UpdateManager {
                         dialog.dismiss();
                     }
                 });
-                builder.show();
+                mainActivity.runOnUiThread(builder::show);
+
                 return;
             } else if (downloadURL != null) {
                 try {
@@ -329,16 +363,17 @@ public class UpdateManager {
                         dialog.dismiss();
                     }
                 });
-                builder.show();
+
+                mainActivity.runOnUiThread(builder::show);
             }
         }
     };
 
     /**
-     * 声明一个handler来跟进进度条
+     * 声明一个handler来跟进进度条（使用主线程Looper）
      */
     @SuppressLint("HandlerLeak")
-    public Handler handler = new Handler() {
+    public Handler handler = new Handler(Looper.getMainLooper()) {
         @SuppressLint("HandlerLeak")
         public void handleMessage(Message msg) {
             MainActivity mainActivity = (MainActivity) mContext;
@@ -346,7 +381,7 @@ public class UpdateManager {
                 case 1:
                     // 更新进度情况
                //     progressBar.setProgress(progress);
-                    mainActivity. sendClickableNotification(mContext,false,"下载中"+progress+"%", 100, progress,null);
+                 //   mainActivity. sendClickableNotification(mContext,false,"下载中"+progress+"%", 100, progress,null);
                     break;
                 case 0:
                     if (downloadDg != null) {
@@ -363,7 +398,7 @@ public class UpdateManager {
 //                    } catch (InterruptedException e) {
 //                        throw new RuntimeException(e);
 //                    }
-                    mainActivity. sendClickableNotification(mContext,true,"下载完成,点击安装", 0, 0,getInstallIntent());
+                  //  mainActivity. sendClickableNotification(mContext,true,"下载完成,点击安装", 0, 0,getInstallIntent());
                     break;
                 default:
                     break;
@@ -469,6 +504,26 @@ public class UpdateManager {
         } catch (Exception e) {
             e.printStackTrace();
         }
+
+    }
+    private VersionInfo getVersionInfoFromServerNew(String version_url) throws IOException {
+        HttpUrl url = HttpUrl.parse(version_url).newBuilder()
+                .addQueryParameter("system", AppInfoUtils.getCurrentPackageName(mContext))
+                .build();
+        Request request = new Request.Builder()
+                .url(url)
+                .build();
+        try( Response response = client.newCall(request).execute()){
+            if (response.isSuccessful() && response.body() != null) {
+                String json = response.body().string();
+                return GsonParser.fromJson(json, VersionInfo.class);
+            }
+        } catch (IOException e) {
+
+            Log.e(TAG, "getVersionInfoFromServerNew: ",e);
+        }
+
+        return  null;
 
     }
 }

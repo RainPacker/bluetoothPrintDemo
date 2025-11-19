@@ -9,5 +9,17 @@
     <string name="txt_permission_open_des">在设置-应用%1$s-权限中开启%2$s权限，以正常使用%3$s功能</string>
     <string name="txt_to_setting">去设置</string>
     <!-- apk更新地址 -->
-    <string name="version_url">http://10.1.50.24/repository/auto-update/mom-mobile-tt-prd/version.xml</string>
+    <string name="version_url">http://10.1.84.103:8081/getVersionInfo/version.json</string>
+    <string name="etPassword">密码</string>
+    <string name="etUsernam">用户名</string>
+    <string name="btnRegister">注册</string>
+    <string name="btnFingerprint">指纹登录</string>
+    <string name="btnPasswordLogin">密码登录</string>
+    <string name="btnEnableFingerprint">开通指纹登录</string>
+    <string name="socket_url">http://10.1.200.51:31976</string>
+
+    <!-- 登录页面 -->
+    <string name="app_logo">应用图标</string>
+    <string name="update_now">立即更新</string>
+    <string name="update_later">稍后再说</string>
 </resources>

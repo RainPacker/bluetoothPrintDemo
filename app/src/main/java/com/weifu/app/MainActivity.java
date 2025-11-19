@@ -156,17 +156,10 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         setAndroidNativeLightStatusBar(this, true);
 //        getWindow().setNavigationBarColor(Color.parseColor("#004098"));
         super.onCreate(savedInstanceState);
-        new Thread(()->{
-            Looper.prepare();
-            updateApk();
-            Looper.loop();
-        }).start();
-
 
        // initReceiver();
      //   getPermission();
-        requestPermissions();
-        createClient();
+        // Defer permissions and Bluetooth client initialization
 //        try {
 //            EMDKResults results = EMDKManager.getEMDKManager(MainActivity.this, this);
 //            if (results.statusCode != EMDKResults.STATUS_CODE.SUCCESS) {
@@ -250,20 +243,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
         //该方法解决的问题是打开浏览器不调用系统浏览器，直接用 webView 打开
         jsBridge = new JsBridge(this);
-        // 注册配置文件 斑马专用
-        jsBridge.createProfile();
-        // 注册广播
-        IntentFilter actionFilters = new IntentFilter();
-        actionFilters.addAction(JsBridge.ACTION_IDATA_SCANRESULT);
-        actionFilters.addAction(JsBridge.ACTION_ZEBRA_SCANRESULT);
-        actionFilters.addAction(Intent.ACTION_SCREEN_ON);
-        actionFilters.addAction( BluetoothAdapter.ACTION_STATE_CHANGED);
-        actionFilters.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            registerReceiver(jsBridge,actionFilters, Context.RECEIVER_EXPORTED);
-        }else {
-            registerReceiver(jsBridge,actionFilters);
-        }
+        // Defer scanner profile creation and receiver registration
 
         webView.addJavascriptInterface(jsBridge, "JsBridge");
 
@@ -300,14 +280,58 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
        // webView.setOnKeyListener((view, keyCode,  event)-> this.onKeyDown(keyCode,event));
 //        updateApk();
 //        showInfoDialog("","xxx","取消",null,"ok",null);
-        AndroidBug5497Workaround.assistActivity(this);
+        
         float navigationBarHeight = getNavigationBarHeight();
 
         LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
         layoutParams.bottomMargin=(int)getNavigationBarHeight();
         webView.setLayoutParams(layoutParams);
 
-        createNoticeChannel();
+        // ==== Defer non-critical tasks to improve first-screen load speed ====
+        
+        // Defer keyboard workaround (500ms)
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            AndroidBug5497Workaround.assistActivity(this);
+        }, 500);
+        
+        // Defer permissions + Bluetooth client initialization (800ms)
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            requestPermissions();
+            createClient();
+        }, 800);
+        
+        // Defer scanner profile creation and receiver registration (1000ms)
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            try {
+                // 注册配置文件 斑马专用
+                jsBridge.createProfile();
+            } catch (Exception e) {
+                Log.w(TAG, "createProfile delayed error: " + e.getMessage());
+            }
+            
+            // 注册广播
+            IntentFilter actionFilters = new IntentFilter();
+            actionFilters.addAction(JsBridge.ACTION_IDATA_SCANRESULT);
+            actionFilters.addAction(JsBridge.ACTION_ZEBRA_SCANRESULT);
+            actionFilters.addAction(Intent.ACTION_SCREEN_ON);
+            actionFilters.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
+            actionFilters.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                registerReceiver(jsBridge, actionFilters, Context.RECEIVER_EXPORTED);
+            } else {
+                registerReceiver(jsBridge, actionFilters);
+            }
+        }, 1000);
+        
+        // Defer notification channel creation (1500ms)
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            createNoticeChannel();
+        }, 1500);
+        
+        // Defer update check on background thread (2000ms)
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            new Thread(() -> updateApk()).start();
+        }, 2000);
     }
 
     @Override
