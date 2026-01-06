@@ -1031,7 +1031,8 @@ private  static  class PrintWorkHandler extends Handler {
 
         ZxingConfig zxingConfig = new ZxingConfig();
         zxingConfig.setPlayBeep(true);
-        zxingConfig.setShowAlbum(false);
+        zxingConfig.setShowAlbum(true);
+        zxingConfig.setFullScreenScan(false);
         intent.putExtra(Constant.INTENT_ZXING_CONFIG,zxingConfig);
        activity.startActivityForResult(intent,SCAN_QR_REQUEST_CODE);
    }

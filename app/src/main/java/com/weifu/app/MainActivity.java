@@ -104,7 +104,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 //    private static final String LOADRL ="http://121.225.97.57:18443/" ;
  //   private static final String LOADRL ="http://221.229.106.229:8000/pad/" ;
 //    private static final String LOADRL ="http://10.1.4.145" ;
-    private static final String LOADRL ="http://10.213.10.57:31094/" ;
+    private static final String LOADRL ="http://10.204.10.28:31376" ;
 //    private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10011;
