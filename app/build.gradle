@@ -4,9 +4,9 @@ plugins {
 
 android {
     compileSdk 34
-    namespace "com.weifu.app"
+    namespace = "com.weifu.app"
     defaultConfig {
-        applicationId "com.weifu.momtt"
+        applicationId "com.weifu.fm"
         minSdkVersion 21
         //noinspection OldTargetApi
         targetSdkVersion 33
@@ -27,18 +27,18 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
-    namespace 'com.weifu.app'
 
-    // apk name def
-    android.applicationVariants.all {
-        variant ->
-            variant.outputs.all {
+    // apk name def (new Variant API)
+    androidComponents {
+        onVariants(selector().all()) { variant ->
+            variant.outputs.each { output ->
                 //在这里修改apk文件名
-                outputFileName = "${rootProject.name}-v${defaultConfig.versionName}-${buildType.name}.apk"
+                output.outputFileName.set("${rootProject.name}-v${defaultConfig.versionName}-${variant.buildType}.apk")
             }
+        }
     }
 }
 

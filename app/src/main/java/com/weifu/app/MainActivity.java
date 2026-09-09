@@ -86,7 +86,7 @@ import java.util.Random;
 
 public class MainActivity extends AppCompatActivity /**implements Scanner.DataListener, EMDKManager.EMDKListener**/ {
      private static final int REQUEST_OPEN = 0X01;
-    private static final String COM_WEIFU_IWMS_FILEPROVIDE = "com.weifu.momtt.fileprovider";
+    private static final String COM_WEIFU_IWMS_FILEPROVIDE = "com.weifu.4m.fileprovider";
     private static final String WATERMARK_TEXT = "MOM";
     private static final String CHANNEL_ID ="wps" ;
     private static final int NOTICE_PERMISSION_REQUEST_CODE = 3 ;
@@ -104,7 +104,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 //    private static final String LOADRL ="http://121.225.97.57:18443/" ;
  //   private static final String LOADRL ="http://221.229.106.229:8000/pad/" ;
 //    private static final String LOADRL ="http://10.1.4.145" ;
-    private static final String LOADRL ="http://10.204.10.28:31376" ;
+    private static final String LOADRL ="https://mom-move.weifu.com.cn/#/" ;
 //    private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10011;
@@ -185,11 +185,12 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         int width = displayMetrics.widthPixels;
         int height = displayMetrics.heightPixels;
         TelephonyManager telephonyManager = (TelephonyManager) this.getSystemService(Context.TELEPHONY_SERVICE);
-        if (telephonyManager.getPhoneType() == TelephonyManager.PHONE_TYPE_NONE) {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-        } else {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
-        }
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+//        if (telephonyManager.getPhoneType() == TelephonyManager.PHONE_TYPE_NONE) {
+//            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+//        } else {
+//            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+//        }
         Log.w(TAG, "onCreate: "+ width+"::"+height);
 //        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         // 横屏

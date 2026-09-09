@@ -23,9 +23,9 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@drawable/logo"
+        android:icon="@drawable/fm"
         android:label="@string/app_name"
-        android:roundIcon="@drawable/logo_round"
+        android:roundIcon="@drawable/fm"
         android:supportsRtl="true"
         android:theme="@style/Theme.Hyoa"
         android:usesCleartextTraffic="true"
@@ -42,7 +42,7 @@
         <activity android:name=".ui.custom.MyScan"
             android:theme="@style/Theme.AppCompat.NoActionBar"></activity>
         <provider
-            android:authorities="com.weifu.momtt.fileprovider"
+            android:authorities="com.weifu.4m.fileprovider"
             android:name="androidx.core.content.FileProvider"
             android:grantUriPermissions="true"
             android:screenOrientation="fullSensor"
