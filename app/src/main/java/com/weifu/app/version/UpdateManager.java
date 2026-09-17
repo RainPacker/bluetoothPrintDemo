@@ -1,5 +1,5 @@
 package com.weifu.app.version;
- 
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.List;
 
 import android.app.AlertDialog;
@@ -24,13 +25,14 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
-import android.view.LayoutInflater;
+import android.util.Log;
 import android.view.View;
 import android.widget.ProgressBar;
+import android.widget.Toast;
 
 import androidx.core.content.FileProvider;
-import androidx.core.graphics.PathUtils;
 
 import com.weifu.app.BuildConfig;
 import com.weifu.app.R;
@@ -44,7 +46,8 @@ import com.weifu.utils.XMLParserUtil;
  *
  */
 public class UpdateManager {
- 
+
+	private static final String TAG = "UpdateManager";
 	// 上下文对象
 	private Context mContext;
 	//更新版本信息对象
@@ -55,19 +58,26 @@ public class UpdateManager {
 	private boolean isInterceptDownload = false;
 	//进度条显示数值
 	private int progress = 0;
- 
-	private static final String savePath = 	Environment.DIRECTORY_DOWNLOADS;
- 
+
+	private static final String savePath = Environment.DIRECTORY_DOWNLOADS;
+
 	private static final String saveFileName = "wps.apk";
- 
+
 	//下载地址
 	private String downloadURL = null;
 	/**
 	 * 下载
 	 */
-	private 	AlertDialog downloadDg;
- 
- 
+	private AlertDialog downloadDg;
+
+	/**
+	 * 是否强制更新
+	 */
+	private boolean isForce = false;
+
+	// 主线程Handler，用于在任意线程安全地操作UI
+	private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
 	/**
 	 * 参数为Context(上下文activity)的构造函数
 	 *
@@ -76,12 +86,14 @@ public class UpdateManager {
 	public UpdateManager(Context context) {
 		this.mContext = context;
 	}
- 
+
 	public void checkUpdate(String version_url) throws IOException {
 		// 从服务端获取版本信息
 		info = getVersionInfoFromServer(version_url);
 		if (info != null) {
 			downloadURL = info.getDownloadURL();
+			isForce = "1".equals(info.getIsForce());
+			Log.d(TAG, "checkUpdate: 强制更新=" + info.getIsForce());
 			try {
 				// 获取当前软件包信息
 				PackageInfo pi = mContext.getPackageManager().getPackageInfo(mContext.getPackageName(), PackageManager.GET_CONFIGURATIONS);
@@ -98,7 +110,7 @@ public class UpdateManager {
 			showErrorDialog();
 		}
 	}
- 
+
 	/**
 	 * 从服务端获取版本信息
 	 *
@@ -139,100 +151,98 @@ public class UpdateManager {
 		}
 		return info;
 	}
- 
-	public void showErrorDialog(){
-		CustomDialog.Builder	 builder = new CustomDialog.Builder(mContext);
-		builder.setTitle("提示");
-		builder.setInfo("网络或软件版本信息有错误，数据无法下载,请联系管理员");
-		builder.setButtonConfirm("确定", new View.OnClickListener() {
 
-			@Override
-			public void onClick(View customDgv) {
-			
-			}
+	public void showErrorDialog(){
+		// Dialog 必须在主线程创建和显示
+		mainHandler.post(() -> {
+			CustomDialog.Builder builder = new CustomDialog.Builder(mContext);
+			builder.setTitle("提示");
+			builder.setInfo("网络或软件版本信息有错误，数据无法下载,请联系管理员");
+			builder.setButtonConfirm("确定", new View.OnClickListener() {
+
+				@Override
+				public void onClick(View customDgv) {
+
+				}
+			});
+			CustomDialog customDg = builder.create();
+			customDg.show();
 		});
-		CustomDialog customDg =	builder.create();
-		customDg.show();
 	}
+
 	/**
 	 * 提示更新对话框
 	 *
 	 */
 	private void showUpdateDialog() {
-		CustomDialog.Builder builder = new CustomDialog. Builder(mContext);
-		builder.setTitle("版本更新");
-		builder.setInfo(info.getDisplayMessage());
+		// Dialog 必须在主线程创建和显示
+		mainHandler.post(() -> {
+			int updateType = isForce ? CustomDialog.UPDATE_TYPE_FORCE : CustomDialog.UPDATE_TYPE_OPTIONAL;
+			Dialog dg = CustomDialog.createUpdateDialog(mContext, updateType,
+				info.getVersion(), parseUpdateContents(info.getDisplayMessage()),
+				new View.OnClickListener() {
+					@Override
+					public void onClick(View v) {
+						showDownloadDialog();
+					}
+				}, new View.OnClickListener() {
+					@Override
+					public void onClick(View v) {
 
-		builder.setButtonConfirm("下载", new View.OnClickListener() {
-			@Override
-			public void onClick(View v) {
-				// 弹出下载框
-				showDownloadDialog();
-			}
-
+					}
+				});
+			dg.show();
 		});
-		builder.setButtonCancel("以后再说", new View.OnClickListener() {
-			@Override
-			public void onClick(View v) {
-
-			}
-
-		});
-		builder.create().show();
 	}
- 
+
 	/**
-	 * 弹出下载框
+	 * 将更新说明按行拆分为更新内容列表（version.xml中displayMessage以##分隔）
+	 *
+	 * @param displayMessage 更新说明
+	 * @return 更新内容列表
+	 */
+	private String[] parseUpdateContents(String displayMessage) {
+		if (displayMessage == null || displayMessage.trim().isEmpty()) {
+			return new String[0];
+		}
+		String[] lines = displayMessage.split("\n");
+		List<String> contents = new ArrayList<>();
+		for (String line : lines) {
+			if (line != null && !line.trim().isEmpty()) {
+				contents.add(line.trim());
+			}
+		}
+		return contents.toArray(new String[0]);
+	}
+
+	/**
+	 * 弹出下载框（静默下载）
 	 */
 	private void showDownloadDialog() {
-		 Builder builder = new Builder(mContext);
-		builder.setTitle("版本更新中...");
-		final LayoutInflater inflater = LayoutInflater.from(mContext);
-		View v = inflater.inflate(R.layout.update_progress, null);
-		progressBar = (ProgressBar) v.findViewById(R.id.pb_update_progress);
-		builder.setView(v);
-		builder.setNegativeButton("取消", new OnClickListener() {
-			public void onClick(DialogInterface dialog, int which) {
-				dialog.dismiss();
-				//终止下载
-				isInterceptDownload = true;
-			}
-		});
-		downloadDg =	builder.create();
-		downloadDg.show();
 		//下载apk
 		downloadApk();
 	}
- 
+
 	/**
 	 * 下载apk
 	 */
 	private void downloadApk(){
+		// 弹窗toast 提示
+		mainHandler.post(() -> Toast.makeText(mContext, "正在下载新版本", Toast.LENGTH_SHORT).show());
 		//开启另一线程下载
 		Thread downLoadThread = new Thread(downApkRunnable);
 		downLoadThread.start();
 	}
- 
+
 	/**
 	 * 从服务器下载新版apk的线程
 	 */
 	private Runnable downApkRunnable = new Runnable(){
 		@Override
 		public void run() {
-			String path = android.os.Environment.getExternalStorageState();
-			System.out.println(path);
 			if (!android.os.Environment.getExternalStorageState().equals(android.os.Environment.MEDIA_MOUNTED)) {
 				//如果没有SD卡
-				Builder builder = new Builder(mContext);
-				builder.setTitle("提示");
-				builder.setMessage("当前设备无SD卡，数据无法下载");
-				builder.setPositiveButton("确定", new OnClickListener() {
-					@Override
-					public void onClick(DialogInterface dialog, int which) {
-						dialog.dismiss();
-					}
-				});
-				builder.show();
+				showErrorAlertDialog("当前设备无SD卡，数据无法下载");
 				return;
 			}else if(downloadURL != null){
 				try {
@@ -242,25 +252,14 @@ public class UpdateManager {
 					conn.connect();
 					int length = conn.getContentLength();
 					InputStream is = conn.getInputStream();
-					File file = new File(savePath);
-					if (!file.exists()) {
 
-
-
-
-
-
-
-					}
-
- 
 					String apkFile = saveFileName;
 					File ApkFile = new File(mContext.getExternalFilesDir(savePath),apkFile);
 					FileOutputStream fos = new FileOutputStream(ApkFile);
- 
+
 					int count = 0;
 					byte buf[] = new byte[1024];
- 
+
 					do{
 						int numRead = is.read(buf);
 						count += numRead;
@@ -269,7 +268,6 @@ public class UpdateManager {
 						handler.sendEmptyMessage(1);
 						if(numRead <= 0){
 							//下载完成通知安装
-
 							handler.sendEmptyMessage(0);
 							isInterceptDownload = true;
 							break;
@@ -285,35 +283,43 @@ public class UpdateManager {
 					e.printStackTrace();
 				}
 			}else{
-				Builder builder = new Builder(mContext);
-				builder.setTitle("提示");
-				builder.setMessage("获取服务器版本信息错误，数据无法下载");
-				builder.setPositiveButton("确定", new OnClickListener() {
-					@Override
-					public void onClick(DialogInterface dialog, int which) {
-						dialog.dismiss();
-					}
-				});
-				builder.show();
+				showErrorAlertDialog("获取服务器版本信息错误，数据无法下载");
 			}
 		}
 	};
- 
+
 	/**
-	 * 声明一个handler来跟进进度条
+	 * 在主线程显示错误提示框
 	 */
-	private Handler handler = new Handler() {
+	private void showErrorAlertDialog(String message) {
+		mainHandler.post(() -> {
+			Builder builder = new Builder(mContext);
+			builder.setTitle("提示");
+			builder.setMessage(message);
+			builder.setPositiveButton("确定", new OnClickListener() {
+				@Override
+				public void onClick(DialogInterface dialog, int which) {
+					dialog.dismiss();
+				}
+			});
+			builder.show();
+		});
+	}
+
+	/**
+	 * 声明一个handler来跟进进度条（使用主线程Looper）
+	 */
+	private Handler handler = new Handler(Looper.getMainLooper()) {
 		public void handleMessage(Message msg) {
 			switch (msg.what) {
 			case 1:
-				// 更新进度情况
-				progressBar.setProgress(progress);
+				// 更新进度情况（静默下载，无需更新进度条）
 				break;
 			case 0:
 				if (downloadDg != null){
 				  downloadDg.dismiss();
 				}
-				progressBar.setVisibility(View.INVISIBLE);
+				Log.d(TAG, "handleMessage: 下载完成");
 				// 安装apk文件
 				installApk();
 				break;
@@ -322,7 +328,7 @@ public class UpdateManager {
 			}
 		};
 	};
- 
+
 	/**
 	 * 安装apk
 	 */
@@ -332,12 +338,6 @@ public class UpdateManager {
 		if (!apkfile.exists()) {
 			return;
 		}
-//		Intent i = new Intent(Intent.ACTION_VIEW);
-//		i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-//		i.setDataAndType(Uri.parse("file://" + apkfile.toString()),
-//				"application/vnd.android.package-archive");
-//		mContext.startActivity(i);
-
 
 		Intent intent = new Intent(Intent.ACTION_VIEW);
 		intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);

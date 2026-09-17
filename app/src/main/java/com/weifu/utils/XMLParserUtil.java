@@ -50,6 +50,8 @@ public class XMLParserUtil {
 						info.setApkName(parser.nextText());
 					} else if ("versionCode".equals(parser.getName())) {
 						info.setVersionCode(Integer.parseInt(parser.nextText()));
+					} else if ("isForce".equals(parser.getName())) {
+						info.setIsForce(parser.nextText());
 					}
 					break;
 				case XmlPullParser.END_TAG:

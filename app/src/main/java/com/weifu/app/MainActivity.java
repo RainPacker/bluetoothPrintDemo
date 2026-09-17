@@ -151,7 +151,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         super.onCreate(savedInstanceState);
         new Thread(()->{
             Looper.prepare();
-           // updateApk();
+            updateApk();
             Looper.loop();
         }).start();
 

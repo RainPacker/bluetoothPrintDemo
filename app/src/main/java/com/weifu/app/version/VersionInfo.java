@@ -19,11 +19,21 @@ public class VersionInfo {
 	private int versionCode;
 	// apk名称
 	private String apkName;
- 
+	// 是否强制更新 1是
+	private String isForce;
+
+	public String getIsForce() {
+		return isForce;
+	}
+
+	public void setIsForce(String isForce) {
+		this.isForce = isForce;
+	}
+
 	public String getVersion() {
 		return version;
 	}
- 
+
 	public void setVersion(String version) {
 		this.version = version;
 	}
