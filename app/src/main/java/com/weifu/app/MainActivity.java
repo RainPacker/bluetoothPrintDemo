@@ -86,7 +86,7 @@ import java.util.Random;
 
 public class MainActivity extends AppCompatActivity /**implements Scanner.DataListener, EMDKManager.EMDKListener**/ {
      private static final int REQUEST_OPEN = 0X01;
-    private static final String COM_WEIFU_IWMS_FILEPROVIDE = "com.weifu.4m.fileprovider";
+    private static final String COM_WEIFU_IWMS_FILEPROVIDE = "com.weifu.pmsdev.fileprovider";
     private static final String WATERMARK_TEXT = "MOM";
     private static final String CHANNEL_ID ="wps" ;
     private static final int NOTICE_PERMISSION_REQUEST_CODE = 3 ;
@@ -104,7 +104,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 //    private static final String LOADRL ="http://121.225.97.57:18443/" ;
  //   private static final String LOADRL ="http://221.229.106.229:8000/pad/" ;
 //    private static final String LOADRL ="http://10.1.4.145" ;
-    private static final String LOADRL ="http://10.4.94.53:81/" ;
+    private static final String LOADRL ="http://10.94.31.184:8091/" ;
 //    private static final String LOADRL ="http://10.94.31.150:31223/" ;
     private WebView webView;
     private final int PICK_REQUEST = 10011;
