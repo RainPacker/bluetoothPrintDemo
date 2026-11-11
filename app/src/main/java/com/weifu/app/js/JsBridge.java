@@ -51,19 +51,12 @@ import com.inuker.bluetooth.library.connect.response.BleReadResponse;
 import com.inuker.bluetooth.library.connect.response.BleWriteResponse;
 import com.inuker.bluetooth.library.model.BleGattProfile;
 import com.inuker.bluetooth.library.receiver.listener.BluetoothBondListener;
-import com.symbol.emdk.barcode.Scanner;
-import com.symbol.emdk.barcode.ScannerException;
 import com.weifu.app.MainActivity;
 import com.weifu.app.R;
-import com.weifu.app.scan.ScannerInterface;
-import com.weifu.app.ui.custom.MyScan;
 import com.weifu.app.utils.NotificationUtil;
 import com.weifu.utils.BluetoothUtil;
 import com.weifu.utils.EscPosUtils;
 import com.weifu.utils.PrintUtil;
-import com.yzq.zxinglibrary.android.CaptureActivity;
-import com.yzq.zxinglibrary.bean.ZxingConfig;
-import com.yzq.zxinglibrary.common.Constant;
 import com.zebra.printer.sdk.ZebraPrinter;
 
 import net.posprinter.posprinterface.ProcessData;
@@ -100,14 +93,6 @@ public class JsBridge extends BroadcastReceiver {
     private AsyncTask mConnectTask;
 
     private BluetoothSocket mSocket;
-    /**
-     * iData
-     */
-    public static final   String ACTION_IDATA_SCANRESULT="android.intent.action.SCANRESULT";
-    /**
-     * 斑马
-     */
-    public static final   String ACTION_ZEBRA_SCANRESULT="default";
 
     final static int TASK_TYPE_CONNECT = 1;
     final static int TASK_TYPE_PRINT = 2;
@@ -115,19 +100,11 @@ public class JsBridge extends BroadcastReceiver {
      * 已经配对的蓝牙设备
      */
     private List<BluetoothDevice> devices;
-    /**
-     * 扫码标识
-     */
-    private String flag;
 
-    // DataWedge Actions
-    private static final String ACTION_DATAWEDGE = "com.symbol.datawedge.api.ACTION";
-    private static final String EXTRA_SOFT_SCAN_TRIGGER = "com.symbol.datawedge.api.SOFT_SCAN_TRIGGER";
-    private static final String ACTION_RESULT_NOTIFICATION = "com.symbol.datawedge.api.NOTIFICATION_ACTION";
-    private static final String ACTION_RESULT = "com.symbol.datawedge.api.RESULT_ACTION";
-    private static final String EXTRA_SET_CONFIG = "com.symbol.datawedge.api.SET_CONFIG";
-    private static final String EXTRA_CREATE_PROFILE = "com.symbol.datawedge.api.CREATE_PROFILE";
-    private static final String EXTRA_PROFILENAME = "WPS";
+    /**
+     * 新扫码插件引用：旧 softScan/sanQR 接口内部转发，实现 H5 无感替换
+     */
+    private com.weifu.scanplugin.ScanPlugin scanPlugin;
 
     private  PrintWorkHandler printWorkHandler;
 
@@ -138,6 +115,13 @@ public class JsBridge extends BroadcastReceiver {
         HandlerThread handlerThread = new HandlerThread("print-thread");
         handlerThread.start();
         printWorkHandler=  new PrintWorkHandler(handlerThread.getLooper(), this);
+    }
+
+    /**
+     * 注入新扫码插件（MainActivity 创建 ScanPlugin 后调用）
+     */
+    public void setScanPlugin(com.weifu.scanplugin.ScanPlugin scanPlugin) {
+        this.scanPlugin = scanPlugin;
     }
 
     public List<BluetoothDevice> getDevices() {
@@ -666,35 +650,20 @@ public class JsBridge extends BroadcastReceiver {
     }
 
 
-    public  void onScaned(String result) throws InterruptedException {
-        Log.d(TAG, "onScaned:"+ result);
-        String callBack = "onScaned";
-        activity.runOnUiThread(()->{
-            activity.getWebView().loadUrl("javascript:" + callBack + "(\"" + flag +"\",\""+result+ "\");");
-        });
-
-    }
-
     /**
-     *
-     * @throws InterruptedException
+     * 设备扫码（斑马 DataWedge / iData 自适应）
+     * <p>
+     * 【无感替换】JS 接口签名不变，内部转发新 ScanPlugin：
+     * 结果仍回调 window.onScaned(flag, result)，存量 H5 零改造。
      */
     @JavascriptInterface
-    public void softScan() throws InterruptedException {
-        Log.d(TAG, "mScan: start...");
-        // 斑马
-//       this.createProfile();
-        softTriggerScan();
-
-        String callBack = "onScaned";
-        String result = "收到来自安卓的消息";
-//        Thread.sleep(3000);
-        // iData
-        ScannerInterface scannerInterface = new ScannerInterface(activity);
-        scannerInterface.scan_start();
-//       activity.runOnUiThread(()->{
-//           activity.getWebView().loadUrl("javascript:" + callBack + "(\"" + flag +"\",\""+result+ "\");");
-//       });
+    public void softScan() {
+        Log.d(TAG, "softScan -> ScanPlugin");
+        if (scanPlugin == null) {
+            Log.e(TAG, "ScanPlugin not injected");
+            return;
+        }
+        scanPlugin.softScan();
     }
 
     /**
@@ -892,33 +861,8 @@ private  static  class PrintWorkHandler extends Handler {
                     break;
            }
         }
-        // 扫码成功事件
-        if (ACTION_IDATA_SCANRESULT.equals(intent.getAction())) {
-            // IData 是从value
-            String s = intent.getStringExtra("value");
-            Log.d("BarcodeTAG", "recvBarcode--" + s);
-            showToast(s);
-            try {
-                onScaned(s);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }
-        if (ACTION_ZEBRA_SCANRESULT.equals(intent.getAction())) {
-            // 斑马
-            String decodedSource = intent.getStringExtra("com.symbol.datawedge.source");
-            String decodedData = intent.getStringExtra("com.symbol.datawedge.data_string");
-            String decodedLabelType = intent.getStringExtra("com.symbol.datawedge.label_type");
-            showToast(decodedData);
-            try {
-                onScaned(decodedData);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-            // 回调通知 js
-
-            Log.d("BarcodeTAG", "recvBarcode--" + decodedData);
-        }
+        // 【无感替换】扫码结果广播（iData/斑马）已由 ScanPlugin 设备适配器内部接收处理，
+        // 此处仅保留蓝牙相关广播
         if(BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(intent.getAction())){
             Log.w(TAG, "蓝牙断开连接: ");
            // showToast("连接已经断开");
@@ -928,113 +872,29 @@ private  static  class PrintWorkHandler extends Handler {
     }
 
 
-    private  void softTriggerScan(){
-        sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_SOFT_SCAN_TRIGGER, "TOGGLE_SCANNING");
-    }
-
-
-
-
-    private void sendDataWedgeIntentWithExtra(String action, String extraKey, String extraValue)
-    {
-        Intent dwIntent = new Intent();
-        dwIntent.setAction(action);
-        dwIntent.putExtra(extraKey, extraValue);
-
-        this.sendBroadcast(dwIntent);
-    }
-    private void sendDataWedgeIntentWithExtra(String action, String extraKey, Bundle extras)
-    {
-        Intent dwIntent = new Intent();
-        dwIntent.setAction(action);
-        dwIntent.putExtra(extraKey, extras);
-
-        this.sendBroadcast(dwIntent);
-    }
+    // 【无感替换】softTriggerScan/createProfile/sendDataWedgeIntentWithExtra
+    // 已删除：DataWedge 配置与软触发由 ScanPlugin 的 ZebraDataWedgeScanner 内部管理
 
     public void   sendBroadcast(Intent intent){
         this.activity.sendBroadcast(intent);
     }
 
-
-    /**
-     * 创建profile 斑马专用配置文件
-     */
-    public void createProfile (){
-        String profileName = EXTRA_PROFILENAME;
-
-        // Send DataWedge intent with extra to create profile
-        // Use CREATE_PROFILE: http://techdocs.zebra.com/datawedge/latest/guide/api/createprofile/
-        sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_CREATE_PROFILE, profileName);
-
-        // Configure created profile to apply to this app
-        Bundle profileConfig = new Bundle();
-        profileConfig.putString("PROFILE_NAME", EXTRA_PROFILENAME);
-        profileConfig.putString("PROFILE_ENABLED", "true");
-        profileConfig.putString("CONFIG_MODE", "CREATE_IF_NOT_EXIST");  // Create profile if it does not exist
-
-        // Configure barcode input plugin
-        Bundle barcodeConfig = new Bundle();
-        barcodeConfig.putString("PLUGIN_NAME", "BARCODE");
-        barcodeConfig.putString("RESET_CONFIG", "true"); //  This is the default
-        Bundle barcodeProps = new Bundle();
-
-        barcodeConfig.putBundle("PARAM_LIST", barcodeProps);
-        profileConfig.putBundle("PLUGIN_CONFIG", barcodeConfig);
-
-        // Associate profile with this app
-        Bundle appConfig = new Bundle();
-        appConfig.putString("PACKAGE_NAME",this.activity.getPackageName());
-        appConfig.putStringArray("ACTIVITY_LIST", new String[]{"*"});
-        profileConfig.putParcelableArray("APP_LIST", new Bundle[]{appConfig});
-        profileConfig.remove("PLUGIN_CONFIG");
-
-        // Apply configs
-        // Use SET_CONFIG: http://techdocs.zebra.com/datawedge/latest/guide/api/setconfig/
-        sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_SET_CONFIG, profileConfig);
-
-        // Configure intent output for captured data to be sent to this app
-        Bundle intentConfig = new Bundle();
-        intentConfig.putString("PLUGIN_NAME", "INTENT");
-        intentConfig.putString("RESET_CONFIG", "true");
-        Bundle intentProps = new Bundle();
-        intentProps.putString("intent_output_enabled", "true");
-        intentProps.putString("intent_action",ACTION_ZEBRA_SCANRESULT);
-        intentProps.putString("intent_delivery", "2");
-        intentConfig.putBundle("PARAM_LIST", intentProps);
-        profileConfig.putBundle("PLUGIN_CONFIG", intentConfig);
-        sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_SET_CONFIG, profileConfig);
-
-        // 配置 回车 BDF
-        Bundle bdfConfig = new Bundle();
-        bdfConfig.putString("PLUGIN_NAME","BDF");
-        bdfConfig.putString("RESET_CONFIG", "true");
-        bdfConfig.putString("OUTPUT_PLUGIN_NAME","KEYSTROKE");
-        Bundle bdfProps = new Bundle();
-        bdfProps.putString("bdf_enabled","true");
-        // 开启回车
-        bdfProps.putString("bdf_send_enter","true");
-        bdfConfig.putBundle("PARAM_LIST", bdfProps);
-        profileConfig.putBundle("PLUGIN_CONFIG",bdfConfig);
-        sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_SET_CONFIG, profileConfig);
-
-
-    }
-
     /**
      * webview 实现扫一扫 打开摄像头
+     * <p>
+     * 【无感替换】JS 接口签名不变，内部转发新 ScanPlugin 相机扫码：
+     * 结果仍回调 window.qrResult(content)，存量 H5 零改造；
+     * 同时获得 DPM 增强识别与无旋转跳转能力。
      */
     @JavascriptInterface
    public  void   sanQR() {
-        Log.d(TAG, "sanQR: ");
-        Intent intent = new Intent(this.activity, MyScan.class);
-
-        ZxingConfig zxingConfig = new ZxingConfig();
-        zxingConfig.setPlayBeep(true);
-        zxingConfig.setShowAlbum(true);
-        zxingConfig.setFullScreenScan(false);
-        intent.putExtra(Constant.INTENT_ZXING_CONFIG,zxingConfig);
-       activity.startActivityForResult(intent,SCAN_QR_REQUEST_CODE);
+        Log.d(TAG, "sanQR -> ScanPlugin");
+        if (scanPlugin == null) {
+            Log.e(TAG, "ScanPlugin not injected");
+            return;
+        }
+        // 默认配置：DPM 增强开启，方向继承当前页面
+        scanPlugin.scan("{\"dpm\":true,\"timeout\":30,\"album\":true,\"orientation\":\"auto\"}", null);
    }
 
     /**

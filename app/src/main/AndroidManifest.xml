@@ -19,6 +19,8 @@
         tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
 
     <application
@@ -39,8 +41,15 @@
             </intent-filter>
         </activity>
         <activity android:name=".MainActivity"  android:windowSoftInputMode="adjustPan"  ></activity>
-        <activity android:name=".ui.custom.MyScan"
-            android:theme="@style/Theme.AppCompat.NoActionBar"></activity>
+        <!-- 【无感替换】旧 MyScan 扫码页已删除，由 ScanPlugin 的 ScanCameraActivity 替代 -->
+        <!-- 新扫码插件相机页：方向锁定策略——Manifest 用 unspecified（尊重系统自动旋转开关，
+             启动瞬间与宿主 unspecified 行为一致，无方向跳变），onCreate 中代码无条件锁定实际方向。
+             注意：不可用 fullSensor，它会无视"自动旋转"开关，启动瞬间按传感器方向渲染，
+             随后代码锁定矫正会造成旋转跳转（模拟器上必现） -->
+        <activity android:name="com.weifu.scanplugin.camera.ScanCameraActivity"
+            android:screenOrientation="unspecified"
+            android:theme="@style/Theme.AppCompat.NoActionBar"
+            android:exported="false"></activity>
         <provider
             android:authorities="com.weifu.pmsdev.fileprovider"
             android:name="androidx.core.content.FileProvider"

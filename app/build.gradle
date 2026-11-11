@@ -62,4 +62,13 @@ dependencies {
     implementation 'com.symbol:emdk:9.1.1'
     implementation 'com.github.zzz40500:android-shapeLoadingView:1.0.3.2'
     implementation 'com.github.yuzhiqiang1993:zxing:2.2.9'
+
+    // ===== 新扫码插件（ScanPlugin）依赖 =====
+    // zxing core 复用旧封装库（com.github.yuzhiqiang1993:zxing:2.2.9）内嵌的 libs/core-3.4.1.jar，
+    // 显式依赖 core-3.5.x 会与其产生重复类冲突（checkDebugDuplicateClasses 失败）
+    // CameraX（现代相机栈：预览旋转自动处理、生命周期感知）
+    implementation 'androidx.camera:camera-core:1.2.3'
+    implementation 'androidx.camera:camera-camera2:1.2.3'
+    implementation 'androidx.camera:camera-lifecycle:1.2.3'
+    implementation 'androidx.camera:camera-view:1.2.3'
 }

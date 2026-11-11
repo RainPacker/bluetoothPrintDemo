@@ -68,8 +68,8 @@ import com.weifu.app.ui.custom.CustomDialog;
 import com.weifu.app.ui.home.AndroidBug5497Workaround;
 import com.weifu.app.utils.NotificationUtil;
 import com.weifu.app.version.UpdateManager;
+import com.weifu.scanplugin.ScanPlugin;
 import com.weifu.utils.PermissionsManager;
-import com.yzq.zxinglibrary.common.Constant;
 
 import net.posprinter.posprinterface.IMyBinder;
 
@@ -106,6 +106,10 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 //    private static final String LOADRL ="http://10.1.4.145" ;
     private static final String LOADRL ="http://10.94.31.184:8091/" ;
 //    private static final String LOADRL ="http://10.94.31.150:31223/" ;
+    /**
+     * 测试模式开关：true 加载本地扫码测试页（assets/test.html），false 加载生产 H5（LOADRL）
+     */
+    private static final boolean LOAD_TEST_PAGE = true;
     private WebView webView;
     private final int PICK_REQUEST = 10011;
     ValueCallback<Uri> mFilePathCallback;
@@ -117,6 +121,11 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private ShapeLoadingDialog shapeLoadingDialog;
     private LoadingView loadingView;
     private JsBridge jsBridge;
+
+    /**
+     * 新扫码插件（window.ScanPlugin）：与旧 JsBridge 并行运行，验证稳定后可下线旧链路
+     */
+    private ScanPlugin scanPlugin;
 
     private long exitTime;
 
@@ -149,11 +158,16 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         setAndroidNativeLightStatusBar(this, true);
 //        getWindow().setNavigationBarColor(Color.parseColor("#004098"));
         super.onCreate(savedInstanceState);
-        new Thread(()->{
-            Looper.prepare();
-            updateApk();
-            Looper.loop();
-        }).start();
+        // 测试模式跳过版本检查：模拟器/本地测试无法访问生产 version_url，
+        // 几秒后网络超时会从后台 MainActivity 弹出错误 Dialog 覆盖前台扫码页，
+        // 造成"扫码页自己旋转 + toast 提示"的假象
+        if (!LOAD_TEST_PAGE) {
+            new Thread(()->{
+                Looper.prepare();
+                updateApk();
+                Looper.loop();
+            }).start();
+        }
 
        // initReceiver();
      //   getPermission();
@@ -244,12 +258,9 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
         //该方法解决的问题是打开浏览器不调用系统浏览器，直接用 webView 打开
         jsBridge = new JsBridge(this);
-        // 注册配置文件 斑马专用
-        jsBridge.createProfile();
-        // 注册广播
+        // 【无感替换】jsBridge.createProfile() 已删除：DataWedge 配置由 ScanPlugin 内部自动完成
+        // 注册广播（扫码结果广播已由 ScanPlugin 设备适配器内部接收，此处仅保留蓝牙/亮屏）
         IntentFilter actionFilters = new IntentFilter();
-        actionFilters.addAction(JsBridge.ACTION_IDATA_SCANRESULT);
-        actionFilters.addAction(JsBridge.ACTION_ZEBRA_SCANRESULT);
         actionFilters.addAction(Intent.ACTION_SCREEN_ON);
         actionFilters.addAction( BluetoothAdapter.ACTION_STATE_CHANGED);
         actionFilters.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
@@ -262,11 +273,22 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
         webView.addJavascriptInterface(jsBridge, "JsBridge");
 
+        // 新扫码插件注入（window.ScanPlugin）：DPM 增强 / 无旋转 / evaluateJavascript 回调
+        scanPlugin = new ScanPlugin(this, webView);
+        webView.addJavascriptInterface(scanPlugin, "ScanPlugin");
+        // 旧接口（softScan/sanQR）内部转发新插件，存量 H5 无感替换
+        jsBridge.setScanPlugin(scanPlugin);
+
         webView.setWebViewClient(new MyClient());
         webView.setWebChromeClient(new MyWebChromeClient());
 
-        // 这里填你需要打包的 H5 页面链接
-        webView.loadUrl(LOADRL);
+        // 测试模式：true 加载本地扫码测试页，false 加载生产 H5
+        if (LOAD_TEST_PAGE) {
+            webView.loadUrl("file:///android_asset/test.html");
+        } else {
+            // 这里填你需要打包的 H5 页面链接
+            webView.loadUrl(LOADRL);
+        }
 //        shapeLoadingDialog = new ShapeLoadingDialog(this);
 //        shapeLoadingDialog.setLoadingText("加载中...");
         progressBar = findViewById(R.id.progress_bar);
@@ -340,10 +362,24 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     @Override
     protected void onDestroy() {
         unregisterReceiver(jsBridge);
+        if (scanPlugin != null) {
+            scanPlugin.release();
+        }
         webView.destroy();
         webView = null;
         super.onDestroy();
 
+    }
+
+    /**
+     * 扫码枪（键盘模拟）按键转发：扫码枪输入先于 WebView 消费
+     */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (scanPlugin != null && scanPlugin.dispatchKeyEvent(event)) {
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
     }
 
 
@@ -362,23 +398,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
             }
         }
 
-        //  扫一扫
-        if (JsBridge.SCAN_QR_REQUEST_CODE == requestCode) {
-            if (resultCode == RESULT_OK) {
-                if (data != null) {
-                    String content = data.getStringExtra(Constant.CODED_CONTENT);
-                    Log.i(TAG, "onActivityResult:扫码内容："+content);
-                    String method = "javascript:qrResult('" + content + "')";
-                    // 这里可能 出现乱码
-                 //   webView.loadUrl(method);
-                    webView.evaluateJavascript(method,null);
-                    String id = "wps";
-                    String name = "wpsChann";
-                //   this.sendClickableNotification(this,new Intent(this,MainActivity.class),content);
-                }
-
-            }
-        }
+        // 【无感替换】扫一扫结果处理已删除：
+        // 新 ScanPlugin 通过静态监听器闭环回传，qrResult 回调由 ScanResultDispatcher 发出
     }
 
 

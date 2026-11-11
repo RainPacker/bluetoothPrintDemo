@@ -1,30 +1,124 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>ScanPlugin 演示页</title>
 </head>
 <body id="body">
-<div style="margin: 050% auto;">
-<button onclick="scan()">扫一扫</button>
-    <input type="text" name="content" id="content"/>
-    <button onclick="sendNotice()">发送通知</button>
-<div id="rsult"></div>
-</div>
-<script >
-    function scan() {
-      JsBridge.sanQR();
-    }
-    function qrResult(rs) {
-      document.getElementById("rsult").innerHTML = rs;
-    }
-    function sendNotice (){
-      var content =   document.getElementById("content").value;
-      JsBridge.sendMessageNotice(content);
-    }
+<div style="margin: 5% auto; max-width: 640px; font-family: sans-serif;">
+    <h3>新扫码插件 ScanPlugin 演示</h3>
 
-</script>
+    <div style="margin: 8px 0;">
+        <button onclick="cameraScanDpm()">相机扫码（DPM 增强模式）</button>
+        <button onclick="cameraScanNormal()">相机扫码（普通模式）</button>
+        <button onclick="cameraScanContinuous()">连续扫码</button>
+    </div>
+
+    <div style="margin: 8px 0;">
+        <button onclick="deviceScan()">设备扫码（斑马/iData 自适应）</button>
+        <button onclick="stopScan()">停止扫码</button>
+    </div>
+
+    <div style="margin: 8px 0;">
+        <button onclick="showInfo()">插件信息</button>
+    </div>
+
+    <h3>旧接口兼容（存量 H5 · 已无感替换为新插件）</h3>
+    <div style="margin: 8px 0;">
+        <button onclick="scan()">旧 sanQR 扫一扫</button>
+        <button onclick="softScanOld()">旧 softScan 设备扫码</button>
+    </div>
+    <p style="color: #888; font-size: 12px;">
+        两个按钮调用旧 JsBridge 接口，内部已转发新 ScanPlugin（可对照验证无感替换效果）
+    </p>
+
+    <h3>结果</h3>
+    <div id="rsult" style="min-height: 60px; border: 1px solid #ccc; padding: 8px; word-break: break-all;"></div>
+
+    <script>
+        function log(msg) {
+            document.getElementById("rsult").innerHTML += msg + "<br/>";
+        }
+
+        // ============ 新插件 API ============
+
+        // 相机扫码（DPM 增强模式：自适应二值化 + 反色 + 旋转重试 + 多帧融合，适配金属刻印 DM 码）
+        function cameraScanDpm() {
+            ScanPlugin.scan(JSON.stringify({
+                dpm: true,          // DPM 增强管线
+                timeout: 30,        // 30 秒超时
+                torch: false,       // 补光灯（金属反光场景建议开启）
+                album: true,        // 允许相册选图识别
+                orientation: "auto" // 继承当前页面方向，跳转无旋转
+            }), "onCameraResult");
+        }
+
+        // 相机扫码（普通模式：快速路径，适配纸质二维码）
+        function cameraScanNormal() {
+            ScanPlugin.scan(JSON.stringify({
+                dpm: false,
+                timeout: 15
+            }), "onCameraResult");
+        }
+
+        // 连续扫码（产线连续盘点）
+        function cameraScanContinuous() {
+            ScanPlugin.scan(JSON.stringify({
+                dpm: true,
+                continuous: true,
+                timeout: 300
+            }), "onCameraResult");
+        }
+
+        // 设备扫码（斑马 DataWedge / iData 自动适配）
+        function deviceScan() {
+            ScanPlugin.setFlag("demo-flag");
+            ScanPlugin.softScan();
+        }
+
+        function stopScan() {
+            ScanPlugin.stop();
+        }
+
+        function showInfo() {
+            log("版本: " + ScanPlugin.getVersion());
+            log("设备: " + ScanPlugin.getScannerInfo());
+        }
+
+        // 新插件统一回调（callbackId 风格）
+        function onCameraResult(json) {
+            var cb = JSON.parse(json);
+            if (cb.event === "result") {
+                log("[新插件] " + cb.data.format + ": " + cb.data.text);
+            } else if (cb.event === "cancel") {
+                log("[新插件] 已取消/超时");
+            } else {
+                log("[新插件] 错误: " + (cb.data && cb.data.text));
+            }
+        }
+
+        // ============ 旧接口兼容 ============
+
+        function scan() {
+            JsBridge.sanQR();
+        }
+
+        function softScanOld() {
+            JsBridge.softScan();
+        }
+
+        // 旧版相机扫码回调（兼容保留）
+        function qrResult(rs) {
+            log("[旧接口 qrResult] " + rs);
+        }
+
+        // 旧版设备扫码回调（兼容保留）
+        function onScaned(flag, result) {
+            log("[旧接口 onScaned] flag=" + flag + " result=" + result);
+        }
+    </script>
+</div>
 </body>
 </html>

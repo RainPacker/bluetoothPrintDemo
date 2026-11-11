@@ -131,6 +131,9 @@ public class UpdateManager {
 			try {
 				// 使用HttpURLConnection打开连接
 				 urlConnection = (HttpURLConnection) url.openConnection();
+				 // 超时设置：避免无超时阻塞数分钟后才弹出错误对话框（扫码页打开期间弹窗会覆盖扫码界面）
+				 urlConnection.setConnectTimeout(5000);
+				 urlConnection.setReadTimeout(5000);
 				 urlConnection.connect();
 				 inputStream = urlConnection.getInputStream();
 				 if(inputStream == null){
