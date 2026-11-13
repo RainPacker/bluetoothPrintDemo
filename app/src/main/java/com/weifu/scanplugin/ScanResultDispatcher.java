@@ -116,12 +116,15 @@ public class ScanResultDispatcher {
 
     private void evaluate(String script) {
         try {
-            webView.evaluateJavascript(script, null);
+            // evaluateJavascript 无需 javascript: 前缀；部分 WebView 版本带前缀解析异常
+            webView.evaluateJavascript(script.startsWith("javascript:")
+                    ? script.substring("javascript:".length()) : script, null);
         } catch (Exception e) {
             Log.e(TAG, "evaluate failed, fallback to loadUrl", e);
             // 极端兜底：页面正在跳转时 evaluateJavascript 可能抛异常
             try {
-                webView.loadUrl(script);
+                webView.loadUrl(script.startsWith("javascript:")
+                        ? script : "javascript:" + script);
             } catch (Exception ignored) {
             }
         }

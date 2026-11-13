@@ -5,120 +5,273 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ScanPlugin 演示页</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; padding: 16px;
+            font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+            background: #f5f6fa; color: #2c3e50;
+        }
+        .wrap { max-width: 640px; margin: 0 auto; }
+        h2 { margin: 4px 0 12px; font-size: 20px; }
+        h3 { margin: 20px 0 8px; font-size: 15px; color: #7f8c8d; font-weight: 600; }
+        .group {
+            background: #fff; border-radius: 12px; padding: 12px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.06); margin-bottom: 12px;
+        }
+        button {
+            padding: 10px 14px; margin: 4px 4px 4px 0;
+            border: 1px solid #dfe6e9; border-radius: 8px;
+            background: #f8f9fa; color: #2c3e50; font-size: 14px; cursor: pointer;
+        }
+        button:active { background: #dfe6e9; }
+        button.primary { background: #09a862; color: #fff; border-color: #09a862; }
+        button.primary:active { background: #078a4e; }
+        /* 最新结果卡片 */
+        .latest {
+            background: #fff; border-radius: 12px; padding: 14px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.06); margin-bottom: 12px;
+            border-left: 4px solid #dfe6e9; transition: border-color .2s;
+        }
+        .latest.ok { border-left-color: #09a862; }
+        .latest.err { border-left-color: #e74c3c; }
+        .latest .badge {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            background: #e8f8f0; color: #09a862; font-size: 12px; font-weight: 600;
+        }
+        .latest.err .badge { background: #fdecea; color: #e74c3c; }
+        .latest .time { color: #95a5a6; font-size: 12px; margin-left: 8px; }
+        .latest .content {
+            margin-top: 8px; font-size: 16px; font-weight: 600;
+            word-break: break-all; user-select: all;
+        }
+        .latest .meta { margin-top: 6px; color: #95a5a6; font-size: 12px; }
+        .latest .copy {
+            margin-top: 8px; padding: 4px 10px; font-size: 12px;
+        }
+        /* 历史列表 */
+        .history { background: #fff; border-radius: 12px; overflow: hidden; }
+        .history .item {
+            padding: 10px 14px; border-bottom: 1px solid #f0f3f5; font-size: 13px;
+        }
+        .history .item:last-child { border-bottom: none; }
+        .history .item .tag { color: #09a862; font-size: 12px; margin-right: 6px; }
+        .history .item .t { color: #95a5a6; font-size: 11px; float: right; }
+        .history .item .txt { word-break: break-all; margin-top: 2px; }
+        .empty { color: #b2bec3; text-align: center; padding: 18px; font-size: 13px; }
+        .clear-btn { float: right; padding: 4px 10px; font-size: 12px; }
+    </style>
 </head>
 <body id="body">
-<div style="margin: 5% auto; max-width: 640px; font-family: sans-serif;">
-    <h3>新扫码插件 ScanPlugin 演示</h3>
+<div class="wrap">
+    <h2>ScanPlugin 演示 <span id="ver" style="color:#95a5a6;font-size:12px;"></span></h2>
 
-    <div style="margin: 8px 0;">
-        <button onclick="cameraScanDpm()">相机扫码（DPM 增强模式）</button>
-        <button onclick="cameraScanNormal()">相机扫码（普通模式）</button>
+    <h3>新插件 API（相机扫码）</h3>
+    <div class="group">
+        <button class="primary" onclick="cameraScanDpm()">DPM 增强扫码（DM 刻印码）</button>
+        <button onclick="cameraScanNormal()">普通扫码（二维码/条码）</button>
         <button onclick="cameraScanContinuous()">连续扫码</button>
     </div>
 
-    <div style="margin: 8px 0;">
-        <button onclick="deviceScan()">设备扫码（斑马/iData 自适应）</button>
+    <h3>新插件 API（设备扫码）</h3>
+    <div class="group">
+        <button onclick="deviceScan()">设备扫码（斑马/iData）</button>
         <button onclick="stopScan()">停止扫码</button>
-    </div>
-
-    <div style="margin: 8px 0;">
         <button onclick="showInfo()">插件信息</button>
     </div>
 
     <h3>旧接口兼容（存量 H5 · 已无感替换为新插件）</h3>
-    <div style="margin: 8px 0;">
+    <div class="group">
         <button onclick="scan()">旧 sanQR 扫一扫</button>
         <button onclick="softScanOld()">旧 softScan 设备扫码</button>
+        <span style="color:#95a5a6;font-size:12px;">调用旧 JsBridge 接口，内部转发新 ScanPlugin</span>
     </div>
-    <p style="color: #888; font-size: 12px;">
-        两个按钮调用旧 JsBridge 接口，内部已转发新 ScanPlugin（可对照验证无感替换效果）
-    </p>
 
-    <h3>结果</h3>
-    <div id="rsult" style="min-height: 60px; border: 1px solid #ccc; padding: 8px; word-break: break-all;"></div>
+    <h3>最新结果 <button class="clear-btn" onclick="clearAll()">清空</button></h3>
+    <div class="latest" id="latest">
+        <span class="badge" id="latestBadge">等待扫码</span>
+        <span class="time" id="latestTime"></span>
+        <div class="content" id="latestContent">暂无扫描结果</div>
+        <div class="meta" id="latestMeta"></div>
+        <button class="copy" id="copyBtn" style="display:none;" onclick="copyLatest()">复制内容</button>
+    </div>
 
-    <script>
-        function log(msg) {
-            document.getElementById("rsult").innerHTML += msg + "<br/>";
+    <h3>历史记录 <span id="count" style="color:#95a5a6;font-size:12px;"></span></h3>
+    <div class="history" id="history">
+        <div class="empty">暂无记录</div>
+    </div>
+
+    <h3>事件日志</h3>
+    <div class="history" id="logs">
+        <div class="empty">暂无事件</div>
+    </div>
+</div>
+
+<script>
+    var lastText = "";
+    var historyCount = 0;
+
+    function fmtTime() {
+        var d = new Date();
+        function p(n) { return n < 10 ? "0" + n : n; }
+        return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+    }
+
+    /* 最新结果卡片更新 */
+    function showLatest(badge, content, meta, ok) {
+        var card = document.getElementById("latest");
+        card.className = "latest " + (ok ? "ok" : "err");
+        document.getElementById("latestBadge").textContent = badge;
+        document.getElementById("latestTime").textContent = fmtTime();
+        document.getElementById("latestContent").textContent = content;
+        document.getElementById("latestMeta").textContent = meta || "";
+        document.getElementById("copyBtn").style.display = ok ? "inline-block" : "none";
+        lastText = ok ? content : "";
+    }
+
+    function copyLatest() {
+        if (!lastText) return;
+        var ta = document.createElement("textarea");
+        ta.value = lastText;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); addLog("已复制到剪贴板"); } catch (e) {}
+        document.body.removeChild(ta);
+    }
+
+    /* 历史记录 */
+    function addHistory(tag, text) {
+        var box = document.getElementById("history");
+        var empty = box.querySelector(".empty");
+        if (empty) empty.remove();
+        var item = document.createElement("div");
+        item.className = "item";
+        item.innerHTML = '<span class="tag">' + tag + '</span>'
+            + '<span class="t">' + fmtTime() + '</span>'
+            + '<div class="txt"></div>';
+        item.querySelector(".txt").textContent = text;
+        box.insertBefore(item, box.firstChild);
+        historyCount++;
+        document.getElementById("count").textContent = "共 " + historyCount + " 条";
+        while (box.children.length > 20) box.removeChild(box.lastChild); // 最多保留 20 条
+    }
+
+    /* 事件日志 */
+    function addLog(msg) {
+        var box = document.getElementById("logs");
+        var empty = box.querySelector(".empty");
+        if (empty) empty.remove();
+        var item = document.createElement("div");
+        item.className = "item";
+        item.innerHTML = '<span class="t">' + fmtTime() + '</span>';
+        item.insertBefore(document.createTextNode(msg), item.firstChild);
+        box.insertBefore(item, box.firstChild);
+        while (box.children.length > 20) box.removeChild(box.lastChild);
+    }
+
+    function clearAll() {
+        document.getElementById("history").innerHTML = '<div class="empty">暂无记录</div>';
+        document.getElementById("logs").innerHTML = '<div class="empty">暂无事件</div>';
+        historyCount = 0;
+        document.getElementById("count").textContent = "";
+        addLog("已清空记录");
+    }
+
+    function log(msg) { addLog(msg); }
+
+    // ============ 新插件 API ============
+
+    // 相机扫码（DPM 增强模式：均衡化+锐化+去噪+旋转+多级ROI，适配金属刻印 DM 码）
+    function cameraScanDpm() {
+        ScanPlugin.scan(JSON.stringify({
+            dpm: true,          // DPM 增强管线
+            timeout: 30,        // 30 秒超时
+            torch: false,       // 补光灯（金属反光场景建议开启）
+            album: true,        // 允许相册选图识别
+            orientation: "auto" // 继承当前页面方向，跳转无旋转
+        }), "onCameraResult");
+    }
+
+    // 相机扫码（普通模式：快速路径，适配纸质二维码/条码）
+    function cameraScanNormal() {
+        ScanPlugin.scan(JSON.stringify({
+            dpm: false,
+            timeout: 15
+        }), "onCameraResult");
+    }
+
+    // 连续扫码（产线连续盘点）
+    function cameraScanContinuous() {
+        ScanPlugin.scan(JSON.stringify({
+            dpm: true,
+            continuous: true,
+            timeout: 300
+        }), "onCameraResult");
+    }
+
+    // 设备扫码（斑马 DataWedge / iData 自动适配）
+    function deviceScan() {
+        ScanPlugin.setFlag("demo-flag");
+        ScanPlugin.softScan();
+    }
+
+    function stopScan() {
+        ScanPlugin.stop();
+    }
+
+    function showInfo() {
+        var info = "版本: " + ScanPlugin.getVersion() + "  |  " + ScanPlugin.getScannerInfo();
+        showLatest("插件信息", info, "设备探测结果", false);
+        addLog(info);
+    }
+
+    // 新插件统一回调（callbackId 风格）
+    function onCameraResult(json) {
+        var cb = JSON.parse(json);
+        if (cb.event === "result") {
+            var fmt = cb.data.format || "UNKNOWN";
+            showLatest(fmt, cb.data.text, "来源: " + (cb.data.source || "camera") + "  格式: " + fmt, true);
+            addHistory(fmt, cb.data.text);
+            addLog("扫码成功: " + fmt);
+        } else if (cb.event === "cancel") {
+            showLatest("已取消", "扫码已取消或超时", "", false);
+            addLog("扫码取消/超时");
+        } else {
+            var err = (cb.data && cb.data.text) || "未知错误";
+            showLatest("错误", err, "", false);
+            addLog("扫码错误: " + err);
         }
+    }
 
-        // ============ 新插件 API ============
+    // ============ 旧接口兼容 ============
 
-        // 相机扫码（DPM 增强模式：自适应二值化 + 反色 + 旋转重试 + 多帧融合，适配金属刻印 DM 码）
-        function cameraScanDpm() {
-            ScanPlugin.scan(JSON.stringify({
-                dpm: true,          // DPM 增强管线
-                timeout: 30,        // 30 秒超时
-                torch: false,       // 补光灯（金属反光场景建议开启）
-                album: true,        // 允许相册选图识别
-                orientation: "auto" // 继承当前页面方向，跳转无旋转
-            }), "onCameraResult");
-        }
+    function scan() {
+        JsBridge.sanQR();
+    }
 
-        // 相机扫码（普通模式：快速路径，适配纸质二维码）
-        function cameraScanNormal() {
-            ScanPlugin.scan(JSON.stringify({
-                dpm: false,
-                timeout: 15
-            }), "onCameraResult");
-        }
+    function softScanOld() {
+        JsBridge.softScan();
+    }
 
-        // 连续扫码（产线连续盘点）
-        function cameraScanContinuous() {
-            ScanPlugin.scan(JSON.stringify({
-                dpm: true,
-                continuous: true,
-                timeout: 300
-            }), "onCameraResult");
-        }
+    // 旧版相机扫码回调（兼容保留）
+    function qrResult(rs) {
+        showLatest("sanQR（旧接口）", rs, "经 JsBridge 转发新 ScanPlugin", true);
+        addHistory("旧接口", rs);
+        addLog("[旧接口 qrResult] " + rs);
+    }
 
-        // 设备扫码（斑马 DataWedge / iData 自动适配）
-        function deviceScan() {
-            ScanPlugin.setFlag("demo-flag");
-            ScanPlugin.softScan();
-        }
+    // 旧版设备扫码回调（兼容保留）
+    function onScaned(flag, result) {
+        showLatest("softScan（旧接口）", result, "flag=" + flag, true);
+        addHistory("设备扫码", result);
+        addLog("[旧接口 onScaned] flag=" + flag + " result=" + result);
+    }
 
-        function stopScan() {
-            ScanPlugin.stop();
-        }
-
-        function showInfo() {
-            log("版本: " + ScanPlugin.getVersion());
-            log("设备: " + ScanPlugin.getScannerInfo());
-        }
-
-        // 新插件统一回调（callbackId 风格）
-        function onCameraResult(json) {
-            var cb = JSON.parse(json);
-            if (cb.event === "result") {
-                log("[新插件] " + cb.data.format + ": " + cb.data.text);
-            } else if (cb.event === "cancel") {
-                log("[新插件] 已取消/超时");
-            } else {
-                log("[新插件] 错误: " + (cb.data && cb.data.text));
-            }
-        }
-
-        // ============ 旧接口兼容 ============
-
-        function scan() {
-            JsBridge.sanQR();
-        }
-
-        function softScanOld() {
-            JsBridge.softScan();
-        }
-
-        // 旧版相机扫码回调（兼容保留）
-        function qrResult(rs) {
-            log("[旧接口 qrResult] " + rs);
-        }
-
-        // 旧版设备扫码回调（兼容保留）
-        function onScaned(flag, result) {
-            log("[旧接口 onScaned] flag=" + flag + " result=" + result);
-        }
-    </script>
+    // 页面加载后显示插件版本
+    try {
+        document.getElementById("ver").textContent = "v" + ScanPlugin.getVersion();
+    } catch (e) {}
+</script>
 </div>
 </body>
 </html>

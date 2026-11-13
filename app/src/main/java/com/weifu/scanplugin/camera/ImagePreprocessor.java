@@ -136,6 +136,119 @@ final class ImagePreprocessor {
     }
 
     /**
+     * 直方图均衡化（DPM 增强）：
+     * 非线性重映射灰度分布，对金属反光、明暗渐变的刻印码增强效果
+     * 显著优于线性对比度拉伸（stretchContrast）。
+     */
+    static void equalizeHistogram(byte[] gray) {
+        int[] hist = new int[256];
+        for (byte b : gray) {
+            hist[b & 0xFF]++;
+        }
+        // 累积分布函数
+        int[] cdf = new int[256];
+        int acc = 0;
+        for (int i = 0; i < 256; i++) {
+            acc += hist[i];
+            cdf[i] = acc;
+        }
+        // 找到 CDF 最小值（均衡化标准公式分母项）
+        int cdfMin = 0;
+        for (int i = 0; i < 256; i++) {
+            if (cdf[i] > 0) {
+                cdfMin = cdf[i];
+                break;
+            }
+        }
+        int total = gray.length;
+        int denom = total - cdfMin;
+        if (denom <= 0) {
+            return; // 单色图
+        }
+        byte[] lut = new byte[256];
+        for (int i = 0; i < 256; i++) {
+            int v = (cdf[i] - cdfMin) * 255 / denom;
+            lut[i] = (byte) Math.max(0, Math.min(255, v));
+        }
+        for (int i = 0; i < gray.length; i++) {
+            gray[i] = lut[gray[i] & 0xFF];
+        }
+    }
+
+    /**
+     * 3x3 拉普拉斯锐化（DPM 增强）：
+     * 增强刻印码模块边界，反光模糊场景下提升模块可分辨度。
+     * 核：[0,-1,0][-1,5,-1][0,-1,0]
+     */
+    static void sharpen(byte[] gray, int width, int height) {
+        if (width < 3 || height < 3) {
+            return;
+        }
+        byte[] src = gray.clone();
+        for (int y = 1; y < height - 1; y++) {
+            for (int x = 1; x < width - 1; x++) {
+                int i = y * width + x;
+                int c = src[i] & 0xFF;
+                int up = src[i - width] & 0xFF;
+                int down = src[i + width] & 0xFF;
+                int left = src[i - 1] & 0xFF;
+                int right = src[i + 1] & 0xFF;
+                int v = 5 * c - up - down - left - right;
+                gray[i] = (byte) Math.max(0, Math.min(255, v));
+            }
+        }
+    }
+
+    /**
+     * 3x3 形态学开运算去噪（腐蚀→膨胀，DPM 增强）：
+     * 金属表面噪点/划痕在二值化后形成孤立散点，干扰 DM 码 Finder Pattern 检测，
+     * 开运算可去除散点并保留码模块结构。
+     */
+    static void denoise(byte[] bin, int width, int height) {
+        if (width < 3 || height < 3) {
+            return;
+        }
+        // 腐蚀：3x3 邻域全黑才保留黑
+        byte[] eroded = new byte[bin.length];
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                if (x == 0 || y == 0 || x == width - 1 || y == height - 1) {
+                    eroded[y * width + x] = (byte) 255;
+                    continue;
+                }
+                boolean allBlack = true;
+                for (int dy = -1; dy <= 1 && allBlack; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        if ((bin[(y + dy) * width + (x + dx)] & 0xFF) == 255) {
+                            allBlack = false;
+                            break;
+                        }
+                    }
+                }
+                eroded[y * width + x] = (byte) (allBlack ? 0 : 255);
+            }
+        }
+        // 膨胀：3x3 邻域有黑即黑（还原因腐蚀造成的模块缩小）
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                if (x == 0 || y == 0 || x == width - 1 || y == height - 1) {
+                    continue;
+                }
+                boolean anyBlack = false;
+                for (int dy = -1; dy <= 1 && !anyBlack; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        if ((eroded[(y + dy) * width + (x + dx)] & 0xFF) == 0) {
+                            anyBlack = true;
+                            break;
+                        }
+                    }
+                }
+                bin[y * width + x] = (byte) (anyBlack ? 0 : 255);
+            }
+        }
+    }
+
+    /**
      * 简单对比度拉伸（灰度直方图 2% 分位裁剪后线性拉伸）
      * 用于低对比度刻印码的快速增强。
      */

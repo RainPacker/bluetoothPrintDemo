@@ -102,8 +102,10 @@ public class ScanCameraActivity extends AppCompatActivity {
 
     private PreviewView previewView;
     private ScanOverlayView overlayView;
-    private Button torchButton;
-    private Button albumButton;
+    private View torchButton;
+    private View albumButton;
+    private View flipButton;
+    private ImageView torchIcon;
     private TextView dpmBadge;
 
     private Camera camera;
@@ -116,6 +118,7 @@ public class ScanCameraActivity extends AppCompatActivity {
     private boolean dpmMode;
     private boolean continuous;
     private boolean torchOn;
+    private boolean frontCamera;
     private boolean albumEnabled;
     private boolean beepEnabled;
     private long timeoutMillis;
@@ -182,6 +185,7 @@ public class ScanCameraActivity extends AppCompatActivity {
         dpmMode = intent.getBooleanExtra(EXTRA_DPM, true);
         continuous = intent.getBooleanExtra(EXTRA_CONTINUOUS, false);
         torchOn = intent.getBooleanExtra(EXTRA_TORCH, false);
+        frontCamera = intent.getBooleanExtra(EXTRA_FRONT, false);
         albumEnabled = intent.getBooleanExtra(EXTRA_ALBUM, true);
         beepEnabled = intent.getBooleanExtra(EXTRA_BEEP, true);
         timeoutMillis = intent.getIntExtra(EXTRA_TIMEOUT, 30) * 1000L;
@@ -209,8 +213,11 @@ public class ScanCameraActivity extends AppCompatActivity {
         overlayView = findViewById(R.id.overlay_view);
         torchButton = findViewById(R.id.btn_torch);
         albumButton = findViewById(R.id.btn_album);
+        flipButton = findViewById(R.id.btn_flip);
+        torchIcon = findViewById(R.id.iv_torch);
         dpmBadge = findViewById(R.id.tv_dpm);
         ImageView backButton = findViewById(R.id.btn_back);
+        initScaleDetector();
 
         if (dpmMode) {
             dpmBadge.setVisibility(View.VISIBLE);
@@ -218,17 +225,62 @@ public class ScanCameraActivity extends AppCompatActivity {
         if (!albumEnabled) {
             albumButton.setVisibility(View.GONE);
         }
-        torchButton.setVisibility(View.VISIBLE);
+        updateTorchIcon();
         torchButton.setOnClickListener(v -> toggleTorch());
         albumButton.setOnClickListener(v -> pickFromAlbum());
+        // 前后摄切换（微信风格翻转相机）
+        flipButton.setOnClickListener(v -> {
+            frontCamera = !frontCamera;
+            if (cameraProvider != null) {
+                bindCamera();
+            }
+        });
         backButton.setOnClickListener(v -> finishWithCancel());
 
-        // 点击预览对焦 + 点测光（F-30）
+        // 横屏时隐藏提示文字：横屏高度小，屏幕居中的取景框会延伸到低处，
+        // 底部提示文字区与取景框下沿重叠（遮挡扫描画面），竖屏保留
+        TextView hintView = findViewById(R.id.tv_hint);
+        if (getResources().getConfiguration().orientation
+                == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+            hintView.setVisibility(View.GONE);
+        }
+
+        // 点击对焦 + 双指缩放变焦（F-30 + 缩放扫码）
         previewView.setOnTouchListener((v, event) -> {
+            scaleDetector.onTouchEvent(event);
             if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) {
                 tapToFocus(event.getX(), event.getY());
             }
             return true;
+        });
+    }
+
+    /**
+     * 双指缩放变焦：拉近远处的码（缩放扫码）。
+     * 必须在 bindViews()（attach 之后）初始化——字段初始化器中 this 未完成 attach，
+     * ScaleGestureDetector 构造内部调 getResources() 会 NPE 导致 Activity 无法实例化闪退。
+     */
+    private android.view.ScaleGestureDetector scaleDetector;
+
+    private void initScaleDetector() {
+        scaleDetector = new android.view.ScaleGestureDetector(this, new android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            @Override
+            public boolean onScale(android.view.ScaleGestureDetector detector) {
+                if (camera == null) {
+                    return false;
+                }
+                androidx.lifecycle.LiveData<androidx.camera.core.ZoomState> live =
+                        camera.getCameraInfo().getZoomState();
+                androidx.camera.core.ZoomState state = live.getValue();
+                if (state == null) {
+                    return false;
+                }
+                float newRatio = state.getZoomRatio() * detector.getScaleFactor();
+                newRatio = Math.max(state.getMinZoomRatio(),
+                        Math.min(state.getMaxZoomRatio(), newRatio));
+                camera.getCameraControl().setZoomRatio(newRatio);
+                return true;
+            }
         });
     }
 
@@ -256,53 +308,75 @@ public class ScanCameraActivity extends AppCompatActivity {
 
     @androidx.camera.camera2.interop.ExperimentalCamera2Interop
     private void startCamera() {
-        cameraExecutor = Executors.newSingleThreadExecutor();
-        final ScanPluginConfig config = pendingConfig != null ? pendingConfig : new ScanPluginConfig();
-
-        // 解码引擎 + 帧分析器（F-21 独立解码线程 / F-22 帧节流）
-        DecodeEngine decodeEngine = new DecodeEngine(dpmMode, config.getFormats());
-        analyzer = new DpmImageAnalyzer(decodeEngine, config.getFrameIntervalMs(),
-                result -> mainHandler.post(() -> onDecodeResult(result)));
+        // executor / analyzer 只创建一次（切换摄像头重复调用时复用，避免线程泄漏）
+        if (cameraExecutor == null) {
+            cameraExecutor = Executors.newSingleThreadExecutor();
+            final ScanPluginConfig config = pendingConfig != null ? pendingConfig : new ScanPluginConfig();
+            DecodeEngine decodeEngine = new DecodeEngine(dpmMode, config.getFormats());
+            // DPM 模式提高帧处理率：刻印码识别依赖多帧概率累积，200ms 节流（5fps）不足
+            int intervalMs = dpmMode ? Math.min(120, config.getFrameIntervalMs()) : config.getFrameIntervalMs();
+            analyzer = new DpmImageAnalyzer(decodeEngine, intervalMs,
+                    result -> mainHandler.post(() -> onDecodeResult(result)));
+        }
 
         ProcessCameraProvider.getInstance(this).addListener(() -> {
             try {
                 cameraProvider = ProcessCameraProvider.getInstance(this).get();
-                // 连续自动对焦（F-06 识别率关键）：Preview+ImageAnalysis 组合下 CameraX 默认
-                // 不启用连续对焦，近距离条码模糊导致识别率低。
-                // 通过 Camera2Interop 对预览与分析流均开启 CONTINUOUS_PICTURE（扫码枪标准做法）
-                Preview.Builder previewBuilder = new Preview.Builder();
-                new androidx.camera.camera2.interop.Camera2Interop.Extender<>(previewBuilder)
-                        .setCaptureRequestOption(android.hardware.camera2.CaptureRequest.CONTROL_AF_MODE,
-                                android.hardware.camera2.CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-                Preview preview = previewBuilder.build();
-                preview.setSurfaceProvider(previewView.getSurfaceProvider());
-
-                // 高分辨率分析流（小尺寸 DM 码需要更高模块分辨率）
-                // 注：ResolutionSelector 为 CameraX 1.3+ API，1.2.x 使用 setTargetResolution
-                ImageAnalysis.Builder analysisBuilder = new ImageAnalysis.Builder()
-                        .setTargetResolution(new Size(1920, 1080))
-                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST);
-                new androidx.camera.camera2.interop.Camera2Interop.Extender<>(analysisBuilder)
-                        .setCaptureRequestOption(android.hardware.camera2.CaptureRequest.CONTROL_AF_MODE,
-                                android.hardware.camera2.CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-                ImageAnalysis imageAnalysis = analysisBuilder.build();
-                imageAnalysis.setAnalyzer(cameraExecutor, analyzer);
-
-                CameraSelector selector = config.isFrontCamera()
-                        ? CameraSelector.DEFAULT_FRONT_CAMERA
-                        : CameraSelector.DEFAULT_BACK_CAMERA;
-
-                cameraProvider.unbindAll();
-                camera = cameraProvider.bindToLifecycle(this, selector, preview, imageAnalysis);
-                camera.getCameraControl().enableTorch(torchOn);
-                if (torchOn) {
-                    torchButton.setText("关闭补光");
-                }
+                bindCamera();
             } catch (Exception e) {
                 Log.e(TAG, "camera init failed", e);
                 finishWithError("相机初始化失败: " + e.getMessage());
             }
         }, ContextCompat.getMainExecutor(this));
+    }
+
+    /**
+     * 绑定相机（首次启动与翻转相机共用）：按 frontCamera 选择前后摄
+     */
+    @androidx.camera.camera2.interop.ExperimentalCamera2Interop
+    private void bindCamera() {
+        try {
+            // 连续自动对焦（F-06 识别率关键）：Preview+ImageAnalysis 组合下 CameraX 默认
+            // 不启用连续对焦，近距离条码模糊导致识别率低。
+            // 通过 Camera2Interop 对预览与分析流均开启 CONTINUOUS_PICTURE（扫码枪标准做法）
+            Preview.Builder previewBuilder = new Preview.Builder();
+            new androidx.camera.camera2.interop.Camera2Interop.Extender<>(previewBuilder)
+                    .setCaptureRequestOption(android.hardware.camera2.CaptureRequest.CONTROL_AF_MODE,
+                            android.hardware.camera2.CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+            Preview preview = previewBuilder.build();
+            preview.setSurfaceProvider(previewView.getSurfaceProvider());
+
+            // 高分辨率分析流（小尺寸 DM 码需要更高模块分辨率）
+            ImageAnalysis.Builder analysisBuilder = new ImageAnalysis.Builder()
+                    .setResolutionSelector(new androidx.camera.core.resolutionselector.ResolutionSelector.Builder()
+                            .setResolutionStrategy(new androidx.camera.core.resolutionselector.ResolutionStrategy(
+                                    new Size(1920, 1080),
+                                    androidx.camera.core.resolutionselector.ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER))
+                            .build())
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST);
+            new androidx.camera.camera2.interop.Camera2Interop.Extender<>(analysisBuilder)
+                    .setCaptureRequestOption(android.hardware.camera2.CaptureRequest.CONTROL_AF_MODE,
+                            android.hardware.camera2.CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+            ImageAnalysis imageAnalysis = analysisBuilder.build();
+            imageAnalysis.setAnalyzer(cameraExecutor, analyzer);
+
+            CameraSelector selector = frontCamera
+                    ? CameraSelector.DEFAULT_FRONT_CAMERA
+                    : CameraSelector.DEFAULT_BACK_CAMERA;
+
+            cameraProvider.unbindAll();
+            camera = cameraProvider.bindToLifecycle(this, selector, preview, imageAnalysis);
+            camera.getCameraControl().enableTorch(torchOn);
+        } catch (Exception e) {
+            Log.e(TAG, "bindCamera failed", e);
+            // 翻转到不支持的摄像头时回退后摄，首次绑定失败才报错退出
+            if (frontCamera) {
+                frontCamera = false;
+                bindCamera();
+            } else {
+                finishWithError("相机初始化失败: " + e.getMessage());
+            }
+        }
     }
 
     private void tapToFocus(float x, float y) {
@@ -327,7 +401,18 @@ public class ScanCameraActivity extends AppCompatActivity {
         if (camera != null) {
             camera.getCameraControl().enableTorch(torchOn);
         }
-        torchButton.setText(torchOn ? "关闭补光" : "补光灯");
+        updateTorchIcon();
+    }
+
+    /**
+     * 闪光灯图标状态切换（开=亮黄闪电）
+     */
+    private void updateTorchIcon() {
+        if (torchIcon != null) {
+            torchIcon.setImageResource(torchOn
+                    ? R.drawable.ic_scan_torch_on
+                    : R.drawable.ic_scan_torch);
+        }
     }
 
     private void pickFromAlbum() {
@@ -374,6 +459,13 @@ public class ScanCameraActivity extends AppCompatActivity {
             return;
         }
         lastResultTime = now;
+        // 诊断提示：扫码成功的可见反馈（若此 Toast 出现而测试页无结果，说明回调链路断；
+        // 若此 Toast 不出现，说明识别失败，问题在解码侧）
+        String text = result.getText();
+        Log.i(TAG, "decode success: " + (result.getBarcodeFormat() == null ? "?" : result.getBarcodeFormat().name())
+                + " text=" + text);
+        Toast.makeText(this, "识别成功: "
+                + (text != null && text.length() > 40 ? text.substring(0, 40) + "…" : text), Toast.LENGTH_LONG).show();
         if (beepEnabled) {
             playBeep();
         }

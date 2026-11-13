@@ -66,15 +66,16 @@ public class ScanOverlayView extends View {
         boolean landscape = w > h;
         int frameW, frameH;
         if (landscape) {
-            // 横屏：宽扁框（高为短边的 70%）
-            frameH = (int) (h * 0.70f);
-            frameW = (int) (frameH * 1.25f);
+            // 横屏：宽扁框（条形码友好，高为短边的 62%）——
+            // 为底部图标按钮区留出空间，避免与屏幕居中的取景框下沿重叠
+            frameH = (int) (h * 0.62f);
+            frameW = (int) (frameH * 1.3f);
             if (frameW > w * 0.8f) {
                 frameW = (int) (w * 0.8f);
             }
         } else {
-            // 竖屏：方形框（边为宽的 70%）
-            frameW = (int) (w * 0.70f);
+            // 竖屏：方形框（微信风格，边为宽的 64%）；一维条码整帧可解，框仅作视觉引导
+            frameW = (int) (w * 0.64f);
             frameH = frameW;
         }
         float left = (w - frameW) / 2f;

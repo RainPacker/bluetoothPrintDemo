@@ -30,7 +30,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.StrictMode;
 import android.provider.MediaStore;
-import android.telephony.TelephonyManager;
 import android.text.format.DateFormat;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -198,13 +197,17 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 
         int width = displayMetrics.widthPixels;
         int height = displayMetrics.heightPixels;
-        TelephonyManager telephonyManager = (TelephonyManager) this.getSystemService(Context.TELEPHONY_SERVICE);
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-//        if (telephonyManager.getPhoneType() == TelephonyManager.PHONE_TYPE_NONE) {
-//            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-//        } else {
-//            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
-//        }
+        // 智能方向判定（F-33）：平板（Android 官方标准 sw>=600dp，约 7 寸+）强制横屏；
+        // 手机强制竖屏。不按电话模块判定——LTE 版平板有 telephony 会被误判。
+        // 注意扫码链路无旋转逻辑与主页方向无关：ScanPlugin 启动扫码前 LOCKED 主页当前方向，
+        // 扫码页继承同一方向并 LOCKED，返回全程无旋转（横竖屏均成立）。
+        android.content.res.Configuration appConfig = getResources().getConfiguration();
+        boolean isTablet = appConfig.smallestScreenWidthDp >= 600
+                || (appConfig.screenLayout & android.content.res.Configuration.SCREENLAYOUT_SIZE_MASK)
+                        >= android.content.res.Configuration.SCREENLAYOUT_SIZE_XLARGE;
+        setRequestedOrientation(isTablet
+                ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                : ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
         Log.w(TAG, "onCreate: "+ width+"::"+height);
 //        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         // 横屏

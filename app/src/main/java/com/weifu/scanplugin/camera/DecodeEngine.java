@@ -107,27 +107,40 @@ class DecodeEngine {
     }
 
     /**
-     * DPM 增强管线（F-25 ~ F-28）
+     * DPM 增强管线（F-25 ~ F-28，DM 识别率优化版）：
+     * 1. 直方图均衡化（非线性增强，对抗金属反光/明暗渐变）
+     * 2. 均衡化 + 拉普拉斯锐化（模块边界增强）
+     * 3. 自适应二值化 + 形态学开运算去噪（金属噪点/划痕清理）
+     * 4. 反色（暗底亮码）+ 四方向旋转重试
+     * 5. 多级 ROI 放大（中心 50% 2x / 30% 3x，覆盖小尺寸 DM 码）
      */
     private Result decodeGrayDpm(byte[] gray, int width, int height) {
-        // 1. 对比度拉伸 + 自适应二值化
+        // 1. 直方图均衡化（比线性对比度拉伸更适合非线性光照）
         byte[] enhanced = gray.clone();
-        ImagePreprocessor.stretchContrast(enhanced);
+        ImagePreprocessor.equalizeHistogram(enhanced);
         Result r = tryDecode(new GrayscaleSource(enhanced, width, height), true);
         if (r != null) return r;
 
+        // 2. 均衡化 + 锐化：模块边界增强
+        byte[] sharpened = enhanced.clone();
+        ImagePreprocessor.sharpen(sharpened, width, height);
+        r = tryDecode(new GrayscaleSource(sharpened, width, height), true);
+        if (r != null) return r;
+
+        // 3. 自适应二值化 + 形态学开运算去噪
         byte[] bin = enhanced.clone();
         ImagePreprocessor.adaptiveThreshold(bin, width, height);
+        ImagePreprocessor.denoise(bin, width, height);
         r = tryDecode(new GrayscaleSource(bin, width, height), false);
         if (r != null) return r;
 
-        // 2. 反色（暗底亮码）
+        // 4. 反色（暗底亮码，激光刻印白字）
         byte[] inv = bin.clone();
         ImagePreprocessor.invert(inv);
         r = tryDecode(new GrayscaleSource(inv, width, height), false);
         if (r != null) return r;
 
-        // 3. 四方向旋转（二值化图 + 原灰度图）
+        // 5. 四方向旋转（去噪二值图 + 锐化灰度图）
         int[] degreesArr = {90, 180, 270};
         for (int deg : degreesArr) {
             byte[] rotatedBin = ImagePreprocessor.rotate(bin, width, height, deg);
@@ -136,25 +149,32 @@ class DecodeEngine {
             r = tryDecode(new GrayscaleSource(rotatedBin, rw, rh), false);
             if (r != null) return r;
         }
-
-        // 4. 反色灰度原图（未二值化）+ 旋转
-        byte[] invGray = enhanced.clone();
-        ImagePreprocessor.invert(invGray);
         for (int deg : degreesArr) {
-            byte[] rotated = ImagePreprocessor.rotate(invGray, width, height, deg);
+            byte[] rotated = ImagePreprocessor.rotate(sharpened, width, height, deg);
             int rw = deg == 180 ? width : height;
             int rh = deg == 180 ? height : width;
             r = tryDecode(new GrayscaleSource(rotated, rw, rh), true);
             if (r != null) return r;
         }
 
-        // 5. ROI 裁剪放大（小尺寸 DM 码）：中心 70% 区域放大 2 倍
-        Object[] cropped = ImagePreprocessor.cropAndScale(enhanced, width, height, 0.7f, 0.7f, 2);
+        // 6. 多级 ROI 放大（小尺寸 DM 码）：中心 50% 2x → 中心 30% 3x
+        r = decodeRoi(sharpened, width, height, 0.5f, 2);
+        if (r != null) return r;
+        r = decodeRoi(sharpened, width, height, 0.3f, 3);
+        if (r != null) return r;
+        return decodeRoi(enhanced, width, height, 0.4f, 2);
+    }
+
+    /**
+     * 单级 ROI：裁剪放大 → 灰度/二值/反色三路解码
+     */
+    private Result decodeRoi(byte[] gray, int width, int height, float ratio, int scale) {
+        Object[] cropped = ImagePreprocessor.cropAndScale(gray, width, height, ratio, ratio, scale);
         @SuppressWarnings("unchecked")
         byte[] roi = (byte[]) cropped[0];
         int roiW = (int) cropped[1];
         int roiH = (int) cropped[2];
-        r = tryDecode(new GrayscaleSource(roi, roiW, roiH), true);
+        Result r = tryDecode(new GrayscaleSource(roi, roiW, roiH), true);
         if (r != null) return r;
 
         byte[] roiBin = roi.clone();
