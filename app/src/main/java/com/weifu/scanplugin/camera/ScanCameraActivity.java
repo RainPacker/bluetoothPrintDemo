@@ -115,6 +115,42 @@ public class ScanCameraActivity extends AppCompatActivity {
     private ToneGenerator toneGenerator;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
+    /**
+     * 微信式周期自动对焦：连续对焦（CONTINUOUS_PICTURE）在金属刻印等低对比度表面
+     * 会"对焦失败后静默放弃"，表现为长时间不清晰、识别极慢。
+     * 周期性对画面中心触发 AF/AE 测光强制重新搜寻对焦（微信同款策略）。
+     */
+    private static final long AUTO_FOCUS_INTERVAL_MS = 1800;
+
+    private final Runnable autoFocusRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (finished || camera == null || previewView.getWidth() <= 0) {
+                return;
+            }
+            try {
+                MeteringPoint center = previewView.getMeteringPointFactory().createPoint(
+                        previewView.getWidth() / 2f, previewView.getHeight() / 2f);
+                FocusMeteringAction action = new FocusMeteringAction.Builder(center,
+                        FocusMeteringAction.FLAG_AF | FocusMeteringAction.FLAG_AE)
+                        .setAutoCancelDuration(1, java.util.concurrent.TimeUnit.SECONDS)
+                        .build();
+                camera.getCameraControl().startFocusAndMetering(action);
+            } catch (Exception ignored) {
+            }
+            mainHandler.postDelayed(this, AUTO_FOCUS_INTERVAL_MS);
+        }
+    };
+
+    private void startAutoFocus() {
+        mainHandler.removeCallbacks(autoFocusRunnable);
+        mainHandler.postDelayed(autoFocusRunnable, AUTO_FOCUS_INTERVAL_MS);
+    }
+
+    private void stopAutoFocus() {
+        mainHandler.removeCallbacks(autoFocusRunnable);
+    }
+
     private boolean dpmMode;
     private boolean continuous;
     private boolean torchOn;
@@ -367,6 +403,7 @@ public class ScanCameraActivity extends AppCompatActivity {
             cameraProvider.unbindAll();
             camera = cameraProvider.bindToLifecycle(this, selector, preview, imageAnalysis);
             camera.getCameraControl().enableTorch(torchOn);
+            startAutoFocus();
         } catch (Exception e) {
             Log.e(TAG, "bindCamera failed", e);
             // 翻转到不支持的摄像头时回退后摄，首次绑定失败才报错退出
@@ -386,11 +423,14 @@ public class ScanCameraActivity extends AppCompatActivity {
         try {
             MeteringPoint meteringPoint = previewView.getMeteringPointFactory()
                     .createPoint(x, y);
+            // autoCancel：2s 后释放测光区域，周期对焦恢复正常工作
             FocusMeteringAction action = new FocusMeteringAction.Builder(
                     meteringPoint, FocusMeteringAction.FLAG_AF | FocusMeteringAction.FLAG_AE)
-                    .disableAutoCancel()
+                    .setAutoCancelDuration(2, java.util.concurrent.TimeUnit.SECONDS)
                     .build();
             camera.getCameraControl().startFocusAndMetering(action);
+            // 点击对焦后重置周期计时，避免立即与点击测光冲突
+            startAutoFocus();
         } catch (Exception e) {
             Log.w(TAG, "focus failed", e);
         }
@@ -466,6 +506,8 @@ public class ScanCameraActivity extends AppCompatActivity {
                 + " text=" + text);
         Toast.makeText(this, "识别成功: "
                 + (text != null && text.length() > 40 ? text.substring(0, 40) + "…" : text), Toast.LENGTH_LONG).show();
+        // 震动反馈：媒体音量为 0（常见于测试机）时无声，震动保证成功反馈不丢失
+        vibrate();
         if (beepEnabled) {
             playBeep();
         }
@@ -501,6 +543,25 @@ public class ScanCameraActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * 成功震动反馈（~120ms），与提示音互补
+     */
+    private void vibrate() {
+        try {
+            android.os.Vibrator vibrator = (android.os.Vibrator) getSystemService(VIBRATOR_SERVICE);
+            if (vibrator == null || !vibrator.hasVibrator()) {
+                return;
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                vibrator.vibrate(android.os.VibrationEffect.createOneShot(120,
+                        android.os.VibrationEffect.DEFAULT_AMPLITUDE));
+            } else {
+                vibrator.vibrate(120);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
     private void finishWithSuccess() {
         finished = true;
         mainHandler.removeCallbacks(timeoutRunnable);
@@ -530,6 +591,7 @@ public class ScanCameraActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         finished = true;
+        stopAutoFocus();
         mainHandler.removeCallbacks(timeoutRunnable);
         if (activeInstance == this) {
             activeInstance = null;

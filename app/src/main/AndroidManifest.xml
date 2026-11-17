@@ -20,6 +20,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
 
@@ -51,7 +52,7 @@
             android:theme="@style/Theme.AppCompat.NoActionBar"
             android:exported="false"></activity>
         <provider
-            android:authorities="com.weifu.pmsdev.fileprovider"
+            android:authorities="com.weifu.pmsdev1.fileprovider"
             android:name="androidx.core.content.FileProvider"
             android:grantUriPermissions="true"
             android:screenOrientation="fullSensor"

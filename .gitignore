@@ -6,3 +6,6 @@ androidTest
 
 .Gradle
 .build
+build/reports/configuration-cache/
+app/release/
+app/release/output-metadata.json

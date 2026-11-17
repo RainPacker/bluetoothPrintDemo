@@ -55,7 +55,15 @@ public class SplashActivity extends AppCompatActivity {
         int height = displayMetrics.heightPixels;
         TelephonyManager telephonyManager = (TelephonyManager) this.getSystemService(Context.TELEPHONY_SERVICE);
       //  setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        // 智能方向判定：与 MainActivity 保持一致——平板（sw>=600dp 或 XLARGE）横屏，
+        // 手机竖屏。修复广告屏在手机上短暂横屏后跳竖屏的问题
+        android.content.res.Configuration appConfig = getResources().getConfiguration();
+        boolean isTablet = appConfig.smallestScreenWidthDp >= 600
+                || (appConfig.screenLayout & android.content.res.Configuration.SCREENLAYOUT_SIZE_MASK)
+                        >= android.content.res.Configuration.SCREENLAYOUT_SIZE_XLARGE;
+        setRequestedOrientation(isTablet
+                ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                : ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
 //        if (telephonyManager.getPhoneType() == TelephonyManager.PHONE_TYPE_NONE) {
 //            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
 //        } else {

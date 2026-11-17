@@ -136,6 +136,39 @@ final class ImagePreprocessor {
     }
 
     /**
+     * 均值降采样（2x2 盒滤波）：DPM 全帧管线提速用。
+     * 相比最近邻，盒滤波保留局部亮度均值，降采样后二值化效果更稳定。
+     *
+     * @param factor 降采样倍数（>=1，1 时原样返回）
+     */
+    static byte[] downscale(byte[] gray, int width, int height, int factor) {
+        if (factor <= 1) {
+            return gray;
+        }
+        int outW = width / factor;
+        int outH = height / factor;
+        if (outW <= 0 || outH <= 0) {
+            return gray;
+        }
+        byte[] out = new byte[outW * outH];
+        for (int y = 0; y < outH; y++) {
+            int sy = y * factor;
+            for (int x = 0; x < outW; x++) {
+                int sx = x * factor;
+                int sum = 0;
+                for (int dy = 0; dy < factor; dy++) {
+                    int base = (sy + dy) * width + sx;
+                    for (int dx = 0; dx < factor; dx++) {
+                        sum += gray[base + dx] & 0xFF;
+                    }
+                }
+                out[y * outW + x] = (byte) (sum / (factor * factor));
+            }
+        }
+        return out;
+    }
+
+    /**
      * 直方图均衡化（DPM 增强）：
      * 非线性重映射灰度分布，对金属反光、明暗渐变的刻印码增强效果
      * 显著优于线性对比度拉伸（stretchContrast）。

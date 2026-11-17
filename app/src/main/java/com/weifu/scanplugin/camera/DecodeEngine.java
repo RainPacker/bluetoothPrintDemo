@@ -60,12 +60,22 @@ class DecodeEngine {
             }
         }
 
-        // 快速路径：原始灰度 + 双二值化器
-        Result result = tryDecode(new GrayscaleSource(gray, width, height), false);
+        // 快速路径（微信策略：中心 ROI 优先）——整帧二值化分块过粗时取景框内的小码必漏检，
+        // 中心裁剪解码既快又稳；随后全帧兜底
+        GrayscaleSource source = new GrayscaleSource(gray, width, height);
+        Result result = tryDecode(cropCenter(source, 0.6f), true);
         if (result != null) {
             return result;
         }
-        result = tryDecode(new GrayscaleSource(gray, width, height), true);
+        result = tryDecode(source, true);
+        if (result != null) {
+            return result;
+        }
+        result = tryDecode(cropCenter(source, 0.6f), false);
+        if (result != null) {
+            return result;
+        }
+        result = tryDecode(source, false);
         if (result != null) {
             return result;
         }
@@ -115,54 +125,70 @@ class DecodeEngine {
      * 5. 多级 ROI 放大（中心 50% 2x / 30% 3x，覆盖小尺寸 DM 码）
      */
     private Result decodeGrayDpm(byte[] gray, int width, int height) {
+        // 全帧增强管线在 1/2 降采样图上执行：像素量降 4 倍 → 单帧耗时大幅下降 →
+        // 单位时间可尝试更多帧，金属刻印码靠多帧概率累积的效率显著提升。
+        // ROI 放大路径仍用原始分辨率，保证小尺寸码的模块细节不损失。
+        int dw = Math.max(1, width / 2);
+        int dh = Math.max(1, height / 2);
+        byte[] small = ImagePreprocessor.downscale(gray, width, height, 2);
+
         // 1. 直方图均衡化（比线性对比度拉伸更适合非线性光照）
-        byte[] enhanced = gray.clone();
+        byte[] enhanced = small.clone();
         ImagePreprocessor.equalizeHistogram(enhanced);
-        Result r = tryDecode(new GrayscaleSource(enhanced, width, height), true);
+        Result r = tryDecode(new GrayscaleSource(enhanced, dw, dh), true);
         if (r != null) return r;
 
         // 2. 均衡化 + 锐化：模块边界增强
         byte[] sharpened = enhanced.clone();
-        ImagePreprocessor.sharpen(sharpened, width, height);
-        r = tryDecode(new GrayscaleSource(sharpened, width, height), true);
+        ImagePreprocessor.sharpen(sharpened, dw, dh);
+        r = tryDecode(new GrayscaleSource(sharpened, dw, dh), true);
         if (r != null) return r;
 
         // 3. 自适应二值化 + 形态学开运算去噪
         byte[] bin = enhanced.clone();
-        ImagePreprocessor.adaptiveThreshold(bin, width, height);
-        ImagePreprocessor.denoise(bin, width, height);
-        r = tryDecode(new GrayscaleSource(bin, width, height), false);
+        ImagePreprocessor.adaptiveThreshold(bin, dw, dh);
+        ImagePreprocessor.denoise(bin, dw, dh);
+        r = tryDecode(new GrayscaleSource(bin, dw, dh), false);
         if (r != null) return r;
 
         // 4. 反色（暗底亮码，激光刻印白字）
         byte[] inv = bin.clone();
         ImagePreprocessor.invert(inv);
-        r = tryDecode(new GrayscaleSource(inv, width, height), false);
+        r = tryDecode(new GrayscaleSource(inv, dw, dh), false);
         if (r != null) return r;
 
         // 5. 四方向旋转（去噪二值图 + 锐化灰度图）
         int[] degreesArr = {90, 180, 270};
         for (int deg : degreesArr) {
-            byte[] rotatedBin = ImagePreprocessor.rotate(bin, width, height, deg);
-            int rw = deg == 180 ? width : height;
-            int rh = deg == 180 ? height : width;
+            byte[] rotatedBin = ImagePreprocessor.rotate(bin, dw, dh, deg);
+            int rw = deg == 180 ? dw : dh;
+            int rh = deg == 180 ? dh : dw;
             r = tryDecode(new GrayscaleSource(rotatedBin, rw, rh), false);
             if (r != null) return r;
         }
         for (int deg : degreesArr) {
-            byte[] rotated = ImagePreprocessor.rotate(sharpened, width, height, deg);
-            int rw = deg == 180 ? width : height;
-            int rh = deg == 180 ? height : width;
+            byte[] rotated = ImagePreprocessor.rotate(sharpened, dw, dh, deg);
+            int rw = deg == 180 ? dw : dh;
+            int rh = deg == 180 ? dh : dw;
             r = tryDecode(new GrayscaleSource(rotated, rw, rh), true);
             if (r != null) return r;
         }
 
-        // 6. 多级 ROI 放大（小尺寸 DM 码）：中心 50% 2x → 中心 30% 3x
-        r = decodeRoi(sharpened, width, height, 0.5f, 2);
+        // 6. 多级 ROI 放大（小尺寸 DM 码，原始分辨率）：中心 50% 2x → 30% 3x
+        r = decodeRoi(gray, width, height, 0.5f, 2);
         if (r != null) return r;
-        r = decodeRoi(sharpened, width, height, 0.3f, 3);
+        r = decodeRoi(gray, width, height, 0.3f, 3);
         if (r != null) return r;
-        return decodeRoi(enhanced, width, height, 0.4f, 2);
+        return decodeRoi(gray, width, height, 0.4f, 2);
+    }
+
+    /**
+     * 中心区域裁剪（微信式 ROI 优先解码）
+     */
+    private static LuminanceSource cropCenter(LuminanceSource source, float ratio) {
+        int w = Math.max(1, (int) (source.getWidth() * ratio));
+        int h = Math.max(1, (int) (source.getHeight() * ratio));
+        return source.crop((source.getWidth() - w) / 2, (source.getHeight() - h) / 2, w, h);
     }
 
     /**
