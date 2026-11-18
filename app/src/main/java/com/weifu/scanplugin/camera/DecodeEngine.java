@@ -108,6 +108,10 @@ class DecodeEngine {
         opts.setTryRotate(true);
         opts.setTryInvert(true);
         opts.setTryDownscale(true);
+        // TextMode.PLAIN：text 每字符 = 原始字节的 Latin-1 一对一映射（0x00~0xFF 全量直通，
+        // 控制字符原样保留，无 HRI 转义/替换层），Java 侧经 ISO-8859-1 可无损还原原始
+        // 字节流，再按内容做智能字符集解码（DM 乱码根治）
+        opts.setTextMode(zxingcpp.BarcodeReader.TextMode.PLAIN);
         cppReader = new zxingcpp.BarcodeReader(opts);
     }
 
@@ -127,10 +131,8 @@ class DecodeEngine {
     /**
      * zxing-cpp 结果 → zxing Result（保持回调链路统一）
      * <p>
-     * 乱码修复：DM 工业码（GS1/二进制内容）默认 HRI 文本模式会把 FNC1/GS 分隔符(0x1D)
-     * 等控制字符渲染为空格/不可见字符，中文字符集错配也会乱码。
-     * 按内容类型分流：纯文本用 HRI；其余从原始字节智能解码（UTF-8→GBK→Latin-1），
-     * GS 分隔符转为可读的 '|'。
+     * 乱码根治（DM 工业码）：TextMode.BINARY 下 text 每字符 = 原始字节的 Latin-1 直通，
+     * 经 ISO-8859-1 精确还原原始字节流后智能解码，彻底绕过 HRI 转义/替换层。
      */
     private static Result toZxingResult(zxingcpp.BarcodeReader.Result r) {
         com.google.zxing.BarcodeFormat fmt;
@@ -143,39 +145,60 @@ class DecodeEngine {
     }
 
     private static String extractText(zxingcpp.BarcodeReader.Result r) {
-        zxingcpp.BarcodeReader.ContentType type = r.getContentType();
-        boolean isPlain = type == zxingcpp.BarcodeReader.ContentType.TEXT;
-        String hri = r.getText();
-        if (isPlain && hri != null && !hasControlChars(hri)) {
-            return hri;
+        String text = r.getText();
+        if (text == null) {
+            return "";
         }
-        // 非纯文本（GS1/BINARY/MIXED）：从原始字节智能解码
-        byte[] bytes = r.getBytes();
-        if (bytes == null || bytes.length == 0) {
-            return hri == null ? "" : hri;
+        // 按 text 字符分布判定 C++ 侧输出语义（PLAIN 模式）：
+        // ① 含 >0xFF 高位字符：内容是合法 UTF-8，C++ 已解码为真 Unicode
+        //    （如全角分号 U+FF1B、中文）→ 直接采用。
+        //    不可再走 ISO-8859-1 还原——高位字符无法映射会被替换成 '?'（实测 ?? 乱码根因）！
+        // ② 全部 ≤0xFF：Latin-1 直通语义（字节 = char）→ 还原原始字节后智能解码
+        //    （覆盖 GBK 等非 UTF-8 编码的刻印内容）
+        boolean hasHigh = false;
+        boolean hasControl = false;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c > 0xFF) {
+                hasHigh = true;
+            } else if (c < 0x20 && c != '\n' && c != '\r' && c != '\t') {
+                hasControl = true;
+            }
         }
-        String decoded = smartDecodeBytes(bytes);
-        // GS 分隔符（0x1D，GS1 元素间隔）转为可读 '|'，其余保留
+        if (hasHigh) {
+            // GS 分隔符（0x1D，GS1 元素间隔）转为可读 '|'
+            return text.replace("\u001D", "|");
+        }
+        if (!hasControl) {
+            return text; // 纯可打印 ASCII/Latin-1
+        }
+        byte[] raw;
+        try {
+            raw = text.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+        } catch (Exception e) {
+            return text;
+        }
+        String decoded = smartDecodeBytes(raw);
+        // GS 分隔符（0x1D，GS1 元素间隔）转为可读 '|'
         return decoded.replace("\u001D", "|");
     }
 
     /**
-     * 检测 HRI 文本是否含未渲染的控制字符（空格/方块乱码的直接来源）
-     */
-    private static boolean hasControlChars(String s) {
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c < 0x20 && c != '\n' && c != '\r' && c != '\t') {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * 智能字节解码：UTF-8 严格校验 → GBK（中文工业标签）→ Latin-1 字节直通
+     * 智能字节解码：ASCII 快速通道 → UTF-8 严格校验 → GBK（中文工业标签）→ Latin-1 直通
      */
     private static String smartDecodeBytes(byte[] bytes) {
+        // 纯 ASCII（工业 DM 最常见）：零风险直通，避免任何编码猜测
+        boolean allAscii = true;
+        for (byte b : bytes) {
+            if (b < 0) {
+                allAscii = false;
+                break;
+            }
+        }
+        if (allAscii) {
+            return new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1);
+        }
+        // UTF-8 严格校验（含替换字符则放弃）
         try {
             String utf8 = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
             if (!utf8.contains("\uFFFD")) {
@@ -183,11 +206,9 @@ class DecodeEngine {
             }
         } catch (Exception ignored) {
         }
+        // GBK：中文工业标签常见编码（宽松解码，可能误判但优于 Latin-1 乱码）
         try {
-            String gbk = new String(bytes, "GBK");
-            if (!gbk.contains("\uFFFD")) {
-                return gbk;
-            }
+            return new String(bytes, "GBK");
         } catch (Exception ignored) {
         }
         return new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1);
