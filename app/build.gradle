@@ -6,7 +6,7 @@ android {
     compileSdk 35
     namespace = "com.weifu.app"
     defaultConfig {
-        applicationId "com.weifu.pmsdev"
+        applicationId "com.weifu.momtt"
         minSdkVersion 21
         //noinspection OldTargetApi
         targetSdkVersion 33

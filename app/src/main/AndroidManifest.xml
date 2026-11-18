@@ -26,9 +26,9 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@drawable/pms"
+        android:icon="@drawable/logo"
         android:label="@string/app_name"
-        android:roundIcon="@drawable/pms"
+        android:roundIcon="@drawable/logo_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Hyoa"
         android:usesCleartextTraffic="true"
