@@ -10,9 +10,13 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
+import android.Manifest;
 import android.app.AlertDialog;
 import android.app.AlertDialog.Builder;
 import android.app.Dialog;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnClickListener;
@@ -32,6 +36,8 @@ import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
+import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
 import com.weifu.app.BuildConfig;
@@ -77,6 +83,13 @@ public class UpdateManager {
 
 	// 主线程Handler，用于在任意线程安全地操作UI
 	private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+	// 下载通知渠道ID（低重要性，进度刷新不响铃不打扰）
+	private static final String CHANNEL_DOWNLOAD = "update_download";
+	// 下载进度/完成/失败通知ID（复用同一ID：后续通知直接覆盖前一条）
+	private static final int NOTIFY_DOWNLOAD_ID = 1002;
+	// 上次已通知的进度百分比（节流：每变化5%才刷新一次通知）
+	private int lastNotifiedProgress = -1;
 
 	/**
 	 * 参数为Context(上下文activity)的构造函数
@@ -260,17 +273,22 @@ public class UpdateManager {
 					File ApkFile = new File(mContext.getExternalFilesDir(savePath),apkFile);
 					FileOutputStream fos = new FileOutputStream(ApkFile);
 
+					//重置进度通知节流标记，并立即发出0%通知
+					lastNotifiedProgress = 0;
+					progress = 0;
+					handler.sendEmptyMessage(1);
+
 					int count = 0;
 					byte buf[] = new byte[1024];
 
 					do{
 						int numRead = is.read(buf);
 						count += numRead;
-						//更新进度条
-						progress = (int) (((float) count / length) * 100);
+						//更新进度（总长度未知时返回-1，走不定进度显示）
+						progress = length > 0 ? (int) (((float) count / length) * 100) : -1;
 						handler.sendEmptyMessage(1);
 						if(numRead <= 0){
-							//下载完成通知安装
+							//下载完成，发完成通知或自动安装
 							handler.sendEmptyMessage(0);
 							isInterceptDownload = true;
 							break;
@@ -282,8 +300,10 @@ public class UpdateManager {
 					is.close();
 				} catch (MalformedURLException e) {
 					e.printStackTrace();
+					handler.obtainMessage(2, "下载地址错误，无法下载更新").sendToTarget();
 				} catch (IOException e) {
 					e.printStackTrace();
+					handler.obtainMessage(2, "网络异常，下载中断，请稍后重试").sendToTarget();
 				}
 			}else{
 				showErrorAlertDialog("获取服务器版本信息错误，数据无法下载");
@@ -316,15 +336,32 @@ public class UpdateManager {
 		public void handleMessage(Message msg) {
 			switch (msg.what) {
 			case 1:
-				// 更新进度情况（静默下载，无需更新进度条）
+				// 更新下载进度通知（节流：每变化5%或到达100%才刷新，避免高频覆盖）
+				if (progress >= 0 && (progress == 100 || progress - lastNotifiedProgress >= 5)) {
+					lastNotifiedProgress = progress;
+					updateDownloadNotification(progress);
+				}
 				break;
 			case 0:
 				if (downloadDg != null){
 				  downloadDg.dismiss();
 				}
 				Log.d(TAG, "handleMessage: 下载完成");
-				// 安装apk文件
-				installApk();
+				if (isForce) {
+					// 强制更新：保持原自动安装行为
+					installApk();
+				} else {
+					// 非强制更新：发可点击安装的通知，由用户决定
+					showInstallNotification();
+				}
+				break;
+			case 2:
+				// 下载失败：发失败通知（覆盖进度通知，取消常驻状态）
+				if (msg.obj instanceof String) {
+					showDownloadFailedNotification((String) msg.obj);
+				} else {
+					showDownloadFailedNotification("下载出错，请稍后重试");
+				}
 				break;
 			default:
 				break;
@@ -333,15 +370,103 @@ public class UpdateManager {
 	};
 
 	/**
-	 * 安装apk
+	 * 更新下载进度通知（同一通知ID覆盖刷新，setOnlyAlertOnce 避免每次刷新响铃）
+	 *
+	 * @param percent 当前下载进度0~100，小于0表示总大小未知（显示不定进度）
 	 */
-	private void installApk() {
-		try{
-		File apkfile =  new File(mContext.getExternalFilesDir(savePath),saveFileName);
-		if (!apkfile.exists()) {
+	private void updateDownloadNotification(int percent) {
+		if (!canNotify()) {
 			return;
 		}
+		ensureDownloadChannel();
+		NotificationCompat.Builder builder = new NotificationCompat.Builder(mContext, CHANNEL_DOWNLOAD)
+				.setSmallIcon(R.drawable.logo_round)
+				.setContentTitle("正在下载更新")
+				.setOngoing(true)
+				.setOnlyAlertOnce(true)
+				.setPriority(NotificationCompat.PRIORITY_LOW);
+		if (percent >= 0) {
+			builder.setContentText("已下载 " + percent + "%")
+					.setProgress(100, percent, false);
+		} else {
+			builder.setContentText("正在下载…")
+					.setProgress(0, 0, true);
+		}
+		NotificationManager manager = (NotificationManager) mContext.getSystemService(Context.NOTIFICATION_SERVICE);
+		manager.notify(NOTIFY_DOWNLOAD_ID, builder.build());
+	}
 
+	/**
+	 * 创建下载专用通知渠道（IMPORTANCE_LOW：进度刷新不响铃、不弹横幅）
+	 */
+	private void ensureDownloadChannel() {
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+			NotificationManager manager = (NotificationManager) mContext.getSystemService(Context.NOTIFICATION_SERVICE);
+			NotificationChannel channel = new NotificationChannel(CHANNEL_DOWNLOAD, "应用更新下载",
+					NotificationManager.IMPORTANCE_LOW);
+			channel.setDescription("显示新版本APK下载进度，下载完成后可点击安装");
+			channel.setShowBadge(false);
+			manager.createNotificationChannel(channel);
+		}
+	}
+
+	/**
+	 * 是否允许发通知（API 33+ 需要 POST_NOTIFICATIONS 运行时权限）
+	 */
+	private boolean canNotify() {
+		if (Build.VERSION.SDK_INT >= 33) {
+			return ContextCompat.checkSelfPermission(mContext, Manifest.permission.POST_NOTIFICATIONS)
+					== PackageManager.PERMISSION_GRANTED;
+		}
+		return true;
+	}
+
+	/**
+	 * 下载完成通知：点击通知直接调起安装（非强制更新时不再自动弹安装，由用户点击触发）
+	 */
+	private void showInstallNotification() {
+		if (!canNotify()) {
+			// 无通知权限时退回原行为：直接自动安装
+			installApk();
+			return;
+		}
+		ensureDownloadChannel();
+		NotificationCompat.Builder builder = new NotificationCompat.Builder(mContext, CHANNEL_DOWNLOAD)
+				.setSmallIcon(R.drawable.logo_round)
+				.setContentTitle("更新下载完成")
+				.setContentText("点击安装新版本")
+				.setOngoing(false)
+				.setAutoCancel(true)
+				.setContentIntent(buildInstallPendingIntent())
+				.setPriority(NotificationCompat.PRIORITY_DEFAULT);
+		NotificationManager manager = (NotificationManager) mContext.getSystemService(Context.NOTIFICATION_SERVICE);
+		manager.notify(NOTIFY_DOWNLOAD_ID, builder.build());
+	}
+
+	/**
+	 * 下载失败通知
+	 */
+	private void showDownloadFailedNotification(String message) {
+		if (!canNotify()) {
+			return;
+		}
+		ensureDownloadChannel();
+		NotificationCompat.Builder builder = new NotificationCompat.Builder(mContext, CHANNEL_DOWNLOAD)
+				.setSmallIcon(R.drawable.logo_round)
+				.setContentTitle("更新下载失败")
+				.setContentText(message)
+				.setOngoing(false)
+				.setAutoCancel(true)
+				.setPriority(NotificationCompat.PRIORITY_DEFAULT);
+		NotificationManager manager = (NotificationManager) mContext.getSystemService(Context.NOTIFICATION_SERVICE);
+		manager.notify(NOTIFY_DOWNLOAD_ID, builder.build());
+	}
+
+	/**
+	 * 构建安装APK的Intent（供手动安装与下载完成通知复用）
+	 */
+	private Intent buildInstallIntent() {
+		File apkfile = new File(mContext.getExternalFilesDir(savePath), saveFileName);
 		Intent intent = new Intent(Intent.ACTION_VIEW);
 		intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 		intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -364,10 +489,30 @@ public class UpdateManager {
 				}
 			}
 		}
-		mContext.startActivity(intent);
-	} catch (Exception e) {
-		e.printStackTrace();
+		return intent;
 	}
 
+	/**
+	 * 构建点击通知后调起安装的PendingIntent
+	 */
+	private PendingIntent buildInstallPendingIntent() {
+		Intent intent = buildInstallIntent();
+		return PendingIntent.getActivity(mContext, NOTIFY_DOWNLOAD_ID, intent,
+				PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+	}
+
+	/**
+	 * 安装apk
+	 */
+	private void installApk() {
+		try {
+			File apkfile = new File(mContext.getExternalFilesDir(savePath), saveFileName);
+			if (!apkfile.exists()) {
+				return;
+			}
+			mContext.startActivity(buildInstallIntent());
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 }
