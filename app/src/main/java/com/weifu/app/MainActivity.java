@@ -103,7 +103,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 //    private static final String LOADRL ="http://121.225.97.57:18443/" ;
  //   private static final String LOADRL ="http://221.229.106.229:8000/pad/" ;
 //    private static final String LOADRL ="http://10.1.4.145" ;
-    private static final String LOADRL ="http://10.94.31.184:8091/" ;
+    private static final String LOADRL ="http://momtt-pad.weifu.com.cn/" ;
 //    private static final String LOADRL ="http://10.94.31.150:31223/" ;
     /**
      * 测试模式开关：true 加载本地扫码测试页（assets/test.html），false 加载生产 H5（LOADRL）
