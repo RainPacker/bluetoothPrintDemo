@@ -70,14 +70,14 @@ class DecodeEngine {
         byte[] small = ImagePreprocessor.downscale(gray, width, height, factor);
         int sw = width / factor;
         int sh = height / factor;
-        Result result = cppDecode(grayToBitmap(small, sw, sh));
+        Result result = cppDecode(grayToBitmap(small, sw, sh), cppReader);
         if (result != null) {
             return result;
         }
 
         // ===== 第 2 层：zxing-cpp 全分辨率（小尺寸码保细节）=====
         if (factor > 1) {
-            result = cppDecode(grayToBitmap(gray, width, height));
+            result = cppDecode(grayToBitmap(gray, width, height), cppReader);
             if (result != null) {
                 return result;
             }
@@ -85,6 +85,21 @@ class DecodeEngine {
 
         if (!dpmMode) {
             return null;
+        }
+
+        // ===== 第 2.5 层：全局直方图二值化兜底（圆点 DM 专项）=====
+        // DotPeen 圆点码的模块是孤立圆点，局部均值二值化（LOCAL_AVERAGE）在点间隙处
+        // 易产生误判；GLOBAL_HISTOGRAM 按全图灰度分布取阈值，对圆点边缘响应不同，
+        // 与第 1/2 层互补
+        result = cppDecode(grayToBitmap(small, sw, sh), cppReaderGlobal);
+        if (result != null) {
+            return result;
+        }
+        if (factor > 1) {
+            result = cppDecode(grayToBitmap(gray, width, height), cppReaderGlobal);
+            if (result != null) {
+                return result;
+            }
         }
 
         // ===== 第 3 层：Java DPM 兜底管线（均衡化/锐化/去噪等特殊预处理）=====
@@ -96,11 +111,16 @@ class DecodeEngine {
     }
 
     /**
-     * zxing-cpp 主引擎（2.3.0 API）：实例类，read(Bitmap) 同步解码。
-     * Options 全开：tryHarder/tryRotate/tryInvert + tryDownscale（C++ 内置多尺度）+
-     * tryDenoise（C++ 内置去噪，DM 刻印码利好）。仅解码线程调用，实例复用安全。
+     * zxing-cpp 主引擎（2.3.0 API）：实例类，read(Bitmap/Rect/rotation) 同步解码。
+     * 双实例互补：
+     * - cppReader：LOCAL_AVERAGE 局部均值二值化（默认，常规码最优）
+     * - cppReaderGlobal：GLOBAL_HISTOGRAM 全局直方图二值化（圆点 DM 兜底，
+     *   对孤立圆点的边缘响应与局部均值不同）
+     * Options：tryHarder/tryRotate/tryInvert + tryDownscale（C++ 内置多尺度）。
+     * 仅解码线程调用，实例复用安全。
      */
     private final zxingcpp.BarcodeReader cppReader;
+    private final zxingcpp.BarcodeReader cppReaderGlobal;
 
     {
         zxingcpp.BarcodeReader.Options opts = new zxingcpp.BarcodeReader.Options();
@@ -113,12 +133,20 @@ class DecodeEngine {
         // 字节流，再按内容做智能字符集解码（DM 乱码根治）
         opts.setTextMode(zxingcpp.BarcodeReader.TextMode.PLAIN);
         cppReader = new zxingcpp.BarcodeReader(opts);
+        zxingcpp.BarcodeReader.Options globalOpts = new zxingcpp.BarcodeReader.Options();
+        globalOpts.setTryHarder(true);
+        globalOpts.setTryRotate(true);
+        globalOpts.setTryInvert(true);
+        globalOpts.setTryDownscale(true);
+        globalOpts.setTextMode(zxingcpp.BarcodeReader.TextMode.PLAIN);
+        globalOpts.setBinarizer(zxingcpp.BarcodeReader.Binarizer.GLOBAL_HISTOGRAM);
+        cppReaderGlobal = new zxingcpp.BarcodeReader(globalOpts);
     }
 
-    private Result cppDecode(Bitmap bitmap) {
+    private Result cppDecode(Bitmap bitmap, zxingcpp.BarcodeReader reader) {
         try {
             java.util.List<zxingcpp.BarcodeReader.Result> results =
-                    cppReader.read(bitmap, new android.graphics.Rect(), 0);
+                    reader.read(bitmap, new android.graphics.Rect(), 0);
             if (results != null && !results.isEmpty()) {
                 return toZxingResult(results.get(0));
             }
@@ -267,7 +295,7 @@ class DecodeEngine {
      */
     Result decodeBitmap(Bitmap bitmap) {
         // C++ 主引擎直读（彩色 Bitmap，识别率高于先转灰度）
-        Result result = cppDecode(bitmap);
+        Result result = cppDecode(bitmap, cppReader);
         if (result != null) {
             return result;
         }
@@ -347,6 +375,18 @@ class DecodeEngine {
             r = tryDecode(new GrayscaleSource(rotated, rw, rh), true);
             if (r != null) return r;
         }
+
+        // 5.5 圆点 DM（DotPeen）专项：闭运算弥合点间隙
+        // 圆点码每个模块是孤立圆点，点间隙使模块连接性断裂、采样网格失配；
+        // 闭运算（膨胀→腐蚀）把点阵"焊接"成连续模块形态，恢复传统解码器可读性
+        byte[] dotBin = bin.clone();
+        ImagePreprocessor.closeMorph(dotBin, dw, dh);
+        r = tryDecode(new GrayscaleSource(dotBin, dw, dh), false);
+        if (r != null) return r;
+        byte[] dotInv = dotBin.clone();
+        ImagePreprocessor.invert(dotInv);
+        r = tryDecode(new GrayscaleSource(dotInv, dw, dh), false);
+        if (r != null) return r;
 
         // 6. 多级 ROI 放大（小尺寸 DM 码，原始分辨率）：中心 50% 2x → 30% 3x
         r = decodeRoi(gray, width, height, 0.5f, 2);

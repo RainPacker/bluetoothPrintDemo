@@ -237,20 +237,14 @@ final class ImagePreprocessor {
     }
 
     /**
-     * 3x3 形态学开运算去噪（腐蚀→膨胀，DPM 增强）：
-     * 金属表面噪点/划痕在二值化后形成孤立散点，干扰 DM 码 Finder Pattern 检测，
-     * 开运算可去除散点并保留码模块结构。
+     * 3x3 形态学腐蚀（原语）：邻域全黑才保留黑，收缩黑色区域
      */
-    static void denoise(byte[] bin, int width, int height) {
-        if (width < 3 || height < 3) {
-            return;
-        }
-        // 腐蚀：3x3 邻域全黑才保留黑
-        byte[] eroded = new byte[bin.length];
+    private static byte[] erode(byte[] bin, int width, int height) {
+        byte[] out = new byte[bin.length];
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 if (x == 0 || y == 0 || x == width - 1 || y == height - 1) {
-                    eroded[y * width + x] = (byte) 255;
+                    out[y * width + x] = (byte) 255;
                     continue;
                 }
                 boolean allBlack = true;
@@ -262,10 +256,16 @@ final class ImagePreprocessor {
                         }
                     }
                 }
-                eroded[y * width + x] = (byte) (allBlack ? 0 : 255);
+                out[y * width + x] = (byte) (allBlack ? 0 : 255);
             }
         }
-        // 膨胀：3x3 邻域有黑即黑（还原因腐蚀造成的模块缩小）
+        return out;
+    }
+
+    /**
+     * 3x3 形态学膨胀（原语）：邻域有黑即黑，扩张黑色区域
+     */
+    private static void dilateInPlace(byte[] bin, byte[] src, int width, int height) {
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 if (x == 0 || y == 0 || x == width - 1 || y == height - 1) {
@@ -274,7 +274,7 @@ final class ImagePreprocessor {
                 boolean anyBlack = false;
                 for (int dy = -1; dy <= 1 && !anyBlack; dy++) {
                     for (int dx = -1; dx <= 1; dx++) {
-                        if ((eroded[(y + dy) * width + (x + dx)] & 0xFF) == 0) {
+                        if ((src[(y + dy) * width + (x + dx)] & 0xFF) == 0) {
                             anyBlack = true;
                             break;
                         }
@@ -283,6 +283,35 @@ final class ImagePreprocessor {
                 bin[y * width + x] = (byte) (anyBlack ? 0 : 255);
             }
         }
+    }
+
+    /**
+     * 3x3 形态学开运算去噪（腐蚀→膨胀，DPM 增强）：
+     * 金属表面噪点/划痕在二值化后形成孤立散点，干扰 DM 码 Finder Pattern 检测，
+     * 开运算可去除散点并保留码模块结构。
+     */
+    static void denoise(byte[] bin, int width, int height) {
+        if (width < 3 || height < 3) {
+            return;
+        }
+        byte[] eroded = erode(bin, width, height);
+        dilateInPlace(bin, eroded, width, height);
+    }
+
+    /**
+     * 3x3 形态学闭运算（膨胀→腐蚀，圆点 DM 专项）：
+     * DotPeen 圆点码每个模块是独立圆点、点间隙使模块连接性断裂，
+     * 传统采样网格失配而无法识别。闭运算先膨胀（圆点长大弥合间隙）
+     * 再腐蚀（恢复边界），把点阵"焊接"成连续模块形态，恢复可解码性。
+     */
+    static void closeMorph(byte[] bin, int width, int height) {
+        if (width < 3 || height < 3) {
+            return;
+        }
+        byte[] dilated = bin.clone();
+        dilateInPlace(dilated, bin, width, height);
+        byte[] closed = erode(dilated, width, height);
+        System.arraycopy(closed, 0, bin, 0, bin.length);
     }
 
     /**
