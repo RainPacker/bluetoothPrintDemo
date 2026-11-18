@@ -33,6 +33,10 @@ class DecodeEngine {
     private final MultiFormatReader reader = new MultiFormatReader();
     private final boolean dpmMode;
     private final Set<String> formats;
+    // 帧计数（仅解码线程访问）：双尺度交替用
+    private int frameCounter = 0;
+    // 圆点命中链并行解码池（惰性创建，release 时关闭）
+    private java.util.concurrent.ExecutorService dotDecodePool;
 
     DecodeEngine(boolean dpmMode, Set<String> formats) {
         this.dpmMode = dpmMode;
@@ -102,24 +106,25 @@ class DecodeEngine {
             }
         }
 
-        // ===== 第 3 层：Java DPM 兜底管线（均衡化/锐化/去噪等特殊预处理）=====
-        // 关键：small 已是 factor-3 降采样图（点距≈16px→5.5px，理想解码尺度），
-        // 传入 preDownscaled=true 跳过内部二次 /2——原实现二次降采样把点距压到
-        // 2.8px，圆点被抹没（离线测试证实：点距5~7px成功、2.8px全败）
-        result = decodeGrayDpm(small, sw, sh, true);
+        // ===== 第 3 层：Java DPM 兜底管线（时间复用双尺度）=====
+        // /3 与 /2 逐帧交替（frameCounter 奇偶）：单帧只跑一份全管线。
+        // 原实现 /3、/2 各跑一遍全管线，每帧最坏耗时翻倍（真机识别变慢主因）；
+        // 交替后硬码靠多帧累积在两尺度间自然覆盖（多帧概率累积不受影响）。
+        // 传入 preDownscaled=true：输入已是降采样图，跳过内部二次 /2
+        // （二次降采样把点距压到 2.8px，圆点被抹没——离线测试证实）
+        byte[] workImg = small;
+        int workW = sw, workH = sh;
+        if (factor > 2) {
+            frameCounter++;
+            if ((frameCounter & 1) == 0) {
+                workImg = ImagePreprocessor.downscale(gray, width, height, 2);
+                workW = width / 2;
+                workH = height / 2;
+            }
+        }
+        result = decodeGrayDpm(workImg, workW, workH, true);
         if (result != null) {
             return result;
-        }
-
-        // ===== 第 3.5 层：/2 尺度圆点 DM 专项 =====
-        // 实拍图参数扫描验证：点距经降采样后 ≈9~10px 是圆点 DM 解码甜蜜区；
-        // 码占画面较大时 /3 图点距过小（实拍验证失败），需补 /2 尺度尝试
-        if (factor > 2) {
-            byte[] half = ImagePreprocessor.downscale(gray, width, height, 2);
-            result = decodeGrayDpm(half, width / 2, height / 2, true);
-            if (result != null) {
-                return result;
-            }
         }
         return decodeFullResRoi(gray, width, height);
     }
@@ -438,11 +443,29 @@ class DecodeEngine {
             if (r != null) return r;
         }
 
-        // 5.5 圆点 DM（DotPeen）专项（基于击打圆点三大失效特征的多变体管线）：
-        // ① 坑底高光：凹坑内壁反光使二值化后圆点呈"黑环+白心" → fillHoles 填实；
-        // ② 点间隙宽（2~3px）：单次 3x3 闭运算焊不上 → 1/2 次闭运算两档；
-        // ③ 低对比：点与喷砂背景灰度差小 → 降低阈值余量 C=6 补充变体；
-        // 注意：不使用开运算去噪（会把细环状圆点连同噪声一起抹掉）
+        // 5.5 圆点 DM（DotPeen）专项：
+        // ① 实拍图参数扫描命中的成功链族【并行优先】（唯一命中组合）：
+        //    原始灰度（无均衡化——均衡化会放大喷砂噪声对比度导致全败）
+        //    + 低阈值 C=4/6 + fillHoles→denoise→close1/2，
+        //    4 组 (窗口,C) 参数独立管线线程池并发，任一成功立即返回；
+        // ② 命中参数的 zxing-cpp 兜底；
+        // ③ 均衡化变体（未命中时的补充覆盖，串行）。
+        // 注意：开运算去噪不能在 fillHoles 之前（会把"黑环+白心"的环形圆点一并抹掉）
+        r = decodeDotChainsParallel(small, dw, dh);
+        if (r != null) return r;
+
+        // ② 命中参数链交 zxing-cpp（C++ DM 容错远强于 Java 版，tryInvert 已开启）
+        if (61 < Math.min(dw, dh) - 2) {
+            byte[] winner = small.clone();
+            ImagePreprocessor.adaptiveThreshold(winner, dw, dh, 61, 4);
+            ImagePreprocessor.fillHoles(winner, dw, dh);
+            ImagePreprocessor.denoise(winner, dw, dh);
+            ImagePreprocessor.closeMorph(winner, dw, dh);
+            r = cppDecode(grayToBitmap(winner, dw, dh), cppReaderGlobal);
+            if (r != null) return r;
+        }
+
+        // ③ 均衡化变体（未命中时补充覆盖，串行）
         byte[] binRaw = enhanced.clone();
         ImagePreprocessor.adaptiveThreshold(binRaw, dw, dh);
 
@@ -480,34 +503,6 @@ class DecodeEngine {
         ImagePreprocessor.closeMorph(dotSolid, dw, dh);
         r = tryDecodeBinWithInvert(dotSolid, dw, dh);
         if (r != null) return r;
-
-        // 实拍图参数扫描验证的成功参数带（唯一命中链族）：
-        // 原始灰度（无均衡化——均衡化会放大喷砂噪声对比度导致全败）
-        // + 低阈值 C=4~8 + fillHoles→denoise→close1~3
-        // 窗口覆盖 25（≈4 点距）与 61（≈6 点距）两档
-        for (int lowWin : new int[]{ImagePreprocessor.ADAPTIVE_WINDOW, 61}) {
-            if (lowWin >= Math.min(dw, dh) - 2) {
-                continue;
-            }
-            for (int lowC : new int[]{4, 6}) {
-                byte[] lowBin = small.clone();
-                ImagePreprocessor.adaptiveThreshold(lowBin, dw, dh, lowWin, lowC);
-                ImagePreprocessor.fillHoles(lowBin, dw, dh);
-                ImagePreprocessor.denoise(lowBin, dw, dh);
-                ImagePreprocessor.closeMorph(lowBin, dw, dh);
-                r = tryDecodeBinWithInvert(lowBin, dw, dh);
-                if (r != null) return r;
-                ImagePreprocessor.closeMorph(lowBin, dw, dh);
-                r = tryDecodeBinWithInvert(lowBin, dw, dh);
-                if (r != null) return r;
-                if (lowWin == 61 && lowC == 4) {
-                    // 实拍扫描命中参数的 zxing-cpp 兜底（C++ 容错远强于 Java 版，
-                    // tryInvert 已开启）
-                    r = cppDecode(grayToBitmap(lowBin, dw, dh), cppReaderGlobal);
-                    if (r != null) return r;
-                }
-            }
-        }
 
         // Java 引擎全部失败 → 把二值化成果交给 zxing-cpp
         r = cppDecode(grayToBitmap(dotSolid, dw, dh), cppReaderGlobal);
@@ -571,6 +566,105 @@ class DecodeEngine {
     }
 
     /**
+     * 圆点 DM 命中链并行解码：4 组 (窗口,C) 参数各自独立管线，
+     * 线程池并发执行，任一成功立即返回（invokeAny 语义）。
+     * 每条链使用局部 MultiFormatReader——共享 reader 非线程安全。
+     */
+    private Result decodeDotChainsParallel(byte[] gray, int width, int height) {
+        if (dotDecodePool == null) {
+            dotDecodePool = java.util.concurrent.Executors.newFixedThreadPool(3, r -> {
+                Thread t = new Thread(r, "dot-decode");
+                t.setDaemon(true);
+                return t;
+            });
+        }
+        int[][] params = {{61, 4}, {61, 6},
+                {ImagePreprocessor.ADAPTIVE_WINDOW, 4}, {ImagePreprocessor.ADAPTIVE_WINDOW, 6}};
+        java.util.List<java.util.concurrent.Callable<Result>> tasks = new java.util.ArrayList<>();
+        for (int[] wc : params) {
+            final int win = wc[0];
+            final int c = wc[1];
+            if (win < Math.min(width, height) - 2) {
+                tasks.add(() -> decodeDotChain(gray, width, height, win, c));
+            }
+        }
+        if (tasks.isEmpty()) {
+            return null;
+        }
+        try {
+            return dotDecodePool.invokeAny(tasks);
+        } catch (Exception e) {
+            return null; // 全部失败或被取消
+        }
+    }
+
+    /**
+     * 单条圆点命中链：原始灰度（无均衡化）→ 自适应(win,C) → fillHoles → denoise
+     * → close1/close2 → GlobalHist/Hybrid × 正/反色（局部 reader）。
+     * 各阶段间响应中断：被取消的任务尽快退出，释放线程池。
+     */
+    private Result decodeDotChain(byte[] gray, int width, int height, int win, int c) {
+        byte[] bin = gray.clone();
+        ImagePreprocessor.adaptiveThreshold(bin, width, height, win, c);
+        if (Thread.currentThread().isInterrupted()) return null;
+        ImagePreprocessor.fillHoles(bin, width, height);
+        if (Thread.currentThread().isInterrupted()) return null;
+        ImagePreprocessor.denoise(bin, width, height);
+        if (Thread.currentThread().isInterrupted()) return null;
+        ImagePreprocessor.closeMorph(bin, width, height);
+        MultiFormatReader local = newLocalReader();
+        Result r = tryDecodeWith(local, bin, width, height);
+        if (r != null) return r;
+        ImagePreprocessor.closeMorph(bin, width, height);
+        return tryDecodeWith(local, bin, width, height);
+    }
+
+    /**
+     * 局部 MultiFormatReader（并行任务专用，非线程安全不可共享）
+     */
+    private MultiFormatReader newLocalReader() {
+        MultiFormatReader local = new MultiFormatReader();
+        local.setHints(buildHints());
+        return local;
+    }
+
+    /**
+     * 单一数据多路解码：GlobalHist → Hybrid → 反色 GlobalHist → 反色 Hybrid
+     */
+    private Result tryDecodeWith(MultiFormatReader r, byte[] data, int width, int height) {
+        try {
+            GrayscaleSource source = new GrayscaleSource(data, width, height);
+            Result res = tryOnce(r, new BinaryBitmap(new GlobalHistogramBinarizer(source)));
+            if (res == null) {
+                r.reset();
+                res = tryOnce(r, new BinaryBitmap(new HybridBinarizer(source)));
+                if (res == null) {
+                    r.reset();
+                    byte[] inv = data.clone();
+                    ImagePreprocessor.invert(inv);
+                    GrayscaleSource invSource = new GrayscaleSource(inv, width, height);
+                    res = tryOnce(r, new BinaryBitmap(new GlobalHistogramBinarizer(invSource)));
+                    if (res == null) {
+                        r.reset();
+                        res = tryOnce(r, new BinaryBitmap(new HybridBinarizer(invSource)));
+                    }
+                }
+            }
+            return res;
+        } finally {
+            r.reset();
+        }
+    }
+
+    private Result tryOnce(MultiFormatReader r, BinaryBitmap bitmap) {
+        try {
+            return r.decodeWithState(bitmap);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
      * 圆点 DM 二值变体尝试：GlobalHist/Hybrid 二值器 × 正/反色（Java 引擎）。
      * 同一数据换二值器无拷贝开销，临界质量二值图的成功率明显提升。
      */
@@ -607,6 +701,13 @@ class DecodeEngine {
     }
 
     private void setHints() {
+        reader.setHints(buildHints());
+    }
+
+    /**
+     * 构建 hints（主 reader 与并行局部 reader 共用）
+     */
+    private Map<DecodeHintType, Object> buildHints() {
         Map<DecodeHintType, Object> hints = new EnumMap<>(DecodeHintType.class);
         java.util.List<com.google.zxing.BarcodeFormat> zxingFormats = new java.util.ArrayList<>();
         for (String f : formats) {
@@ -621,7 +722,17 @@ class DecodeEngine {
             hints.put(DecodeHintType.POSSIBLE_FORMATS, EnumSet.copyOf(zxingFormats));
         }
         hints.put(DecodeHintType.TRY_HARDER, Boolean.TRUE); // F-24
-        reader.setHints(hints);
+        return hints;
+    }
+
+    /**
+     * 释放资源（DpmImageAnalyzer.release 调用）
+     */
+    void release() {
+        if (dotDecodePool != null) {
+            dotDecodePool.shutdownNow();
+            dotDecodePool = null;
+        }
     }
 
     /**

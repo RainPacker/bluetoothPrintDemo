@@ -128,5 +128,6 @@ class DpmImageAnalyzer implements ImageAnalysis.Analyzer {
     void release() {
         active = false;
         decodeThread.quitSafely();
+        decodeEngine.release();
     }
 }

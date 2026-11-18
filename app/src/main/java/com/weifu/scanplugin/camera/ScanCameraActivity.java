@@ -116,6 +116,8 @@ public class ScanCameraActivity extends AppCompatActivity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     // 相册识别中的进度对话框（期间相机扫码暂停，省电且避免双路识别竞争）
     private android.app.AlertDialog albumProgressDialog;
+    // 相册识别进行中：期间丢弃相机解码回调（双保险），防止暂停前排队的帧误触发
+    private boolean albumRecognizing = false;
 
     /**
      * 微信式周期自动对焦：连续对焦（CONTINUOUS_PICTURE）在金属刻印等低对比度表面
@@ -507,15 +509,24 @@ public class ScanCameraActivity extends AppCompatActivity {
             }
             final Bitmap finalBitmap = bitmap;
             if (analyzer != null) {
-                // 暂停相机扫码：解码期间不再逐帧分析（省电），
-                // 也避免相机识别与相册识别在解码线程上竞争
+                // 彻底关闭相机：解绑全部用例（传感器断电，比 setActive(false) 仅丢帧更省电），
+                // 同时避免相机识别与相册识别在解码线程上竞争
+                albumRecognizing = true;
                 analyzer.setActive(false);
+                if (cameraProvider != null) {
+                    try {
+                        cameraProvider.unbindAll();
+                    } catch (Exception e) {
+                        Log.e(TAG, "unbindAll failed", e);
+                    }
+                }
                 // 暂停超时计时，避免识别中被超时关页；识别失败后重新计时
                 mainHandler.removeCallbacks(timeoutRunnable);
                 showAlbumProgress();
                 analyzer.decodeBitmap(finalBitmap, result ->
                         mainHandler.post(() -> {
                             dismissAlbumProgress();
+                            albumRecognizing = false;
                             if (result == null) {
                                 Toast.makeText(this, "未识别到条码", Toast.LENGTH_SHORT).show();
                                 resumeAfterAlbum();
@@ -549,11 +560,21 @@ public class ScanCameraActivity extends AppCompatActivity {
     }
 
     /**
-     * 相册识别失败后恢复：重启扫码分析并重新挂载超时计时
+     * 相册识别失败后恢复：重新绑定摄像头（补光灯/自动对焦随 bindCamera 重挂）、
+     * 重启扫码分析并重新挂载超时计时
      */
     private void resumeAfterAlbum() {
-        if (analyzer != null && !finished) {
-            analyzer.setActive(true);
+        if (!finished) {
+            if (cameraProvider != null) {
+                try {
+                    bindCamera();
+                } catch (Exception e) {
+                    Log.e(TAG, "rebind camera failed", e);
+                }
+            }
+            if (analyzer != null) {
+                analyzer.setActive(true);
+            }
         }
         if (timeoutMillis > 0) {
             mainHandler.removeCallbacks(timeoutRunnable);
@@ -603,6 +624,11 @@ public class ScanCameraActivity extends AppCompatActivity {
      */
     private void onDecodeResult(Result result) {
         if (finished || result == null) {
+            return;
+        }
+        // 相册识别期间丢弃相机帧结果：防暂停前已入队解码任务的时序竞争
+        if (albumRecognizing) {
+            Log.d(TAG, "camera result dropped during album recognition");
             return;
         }
         String text = result.getText();
