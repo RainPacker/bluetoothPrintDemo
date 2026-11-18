@@ -261,17 +261,23 @@ public class UpdateManager {
 				showErrorAlertDialog("当前设备无SD卡，数据无法下载");
 				return;
 			}else if(downloadURL != null){
+				HttpURLConnection conn = null;
+				InputStream is = null;
+				FileOutputStream fos = null;
 				try {
 					//服务器上新版apk地址
 					URL url = new URL(downloadURL);
-					HttpURLConnection conn = (HttpURLConnection)url.openConnection();
+					conn = (HttpURLConnection)url.openConnection();
+					// 超时保护：连接/读取卡死时抛异常走失败通知，而不是无限阻塞
+					conn.setConnectTimeout(15000);
+					conn.setReadTimeout(30000);
 					conn.connect();
 					int length = conn.getContentLength();
-					InputStream is = conn.getInputStream();
+					is = conn.getInputStream();
 
 					String apkFile = saveFileName;
 					File ApkFile = new File(mContext.getExternalFilesDir(savePath),apkFile);
-					FileOutputStream fos = new FileOutputStream(ApkFile);
+					fos = new FileOutputStream(ApkFile);
 
 					//重置进度通知节流标记，并立即发出0%通知
 					lastNotifiedProgress = 0;
@@ -279,31 +285,47 @@ public class UpdateManager {
 					handler.sendEmptyMessage(1);
 
 					int count = 0;
-					byte buf[] = new byte[1024];
+					byte buf[] = new byte[8192];
 
 					do{
 						int numRead = is.read(buf);
-						count += numRead;
-						//更新进度（总长度未知时返回-1，走不定进度显示）
-						progress = length > 0 ? (int) (((float) count / length) * 100) : -1;
-						handler.sendEmptyMessage(1);
 						if(numRead <= 0){
-							//下载完成，发完成通知或自动安装
+							//EOF（服务器关闭流）：下载完成，发完成通知或自动安装
 							handler.sendEmptyMessage(0);
 							isInterceptDownload = true;
 							break;
 						}
 						fos.write(buf,0,numRead);
+						count += numRead;
+						//更新进度（总长度未知时走不定进度显示；上限钳制100）
+						progress = length > 0 ? Math.min(100, (int) (((float) count / length) * 100)) : -1;
+						handler.sendEmptyMessage(1);
+						// 关键修复：已收满 Content-Length 即视为完成，不再等待 EOF——
+						// 部分服务器收满响应体后保持连接不关闭，而 read() 无超时无限阻塞，
+						// 导致进度永远停在 100%、完成/安装流程无法触发（实测卡 100% 根因）
+						if(length > 0 && count >= length){
+							handler.sendEmptyMessage(0);
+							isInterceptDownload = true;
+							break;
+						}
 						//当点击取消时，则停止下载
 					}while(!isInterceptDownload);
-					fos.close();
-					is.close();
-				} catch (MalformedURLException e) {
+				} catch (Exception e) {
 					e.printStackTrace();
-					handler.obtainMessage(2, "下载地址错误，无法下载更新").sendToTarget();
-				} catch (IOException e) {
-					e.printStackTrace();
+					// 清理损坏的部分文件，避免残留文件被误安装
+					try {
+						new File(mContext.getExternalFilesDir(savePath), saveFileName).delete();
+					} catch (Exception ignored) {
+					}
 					handler.obtainMessage(2, "网络异常，下载中断，请稍后重试").sendToTarget();
+				} finally {
+					try { if (fos != null) fos.close(); } catch (Exception ignored) {
+					}
+					try { if (is != null) is.close(); } catch (Exception ignored) {
+					}
+					if (conn != null) {
+						conn.disconnect();
+					}
 				}
 			}else{
 				showErrorAlertDialog("获取服务器版本信息错误，数据无法下载");
@@ -347,8 +369,8 @@ public class UpdateManager {
 				  downloadDg.dismiss();
 				}
 				Log.d(TAG, "handleMessage: 下载完成");
-				if (isForce) {
-					// 强制更新：保持原自动安装行为
+				if (isForce || !canNotify()) {
+					// 强制更新或无通知权限：自动安装
 					installApk();
 				} else {
 					// 非强制更新：发可点击安装的通知，由用户决定
@@ -426,8 +448,7 @@ public class UpdateManager {
 	 */
 	private void showInstallNotification() {
 		if (!canNotify()) {
-			// 无通知权限时退回原行为：直接自动安装
-			installApk();
+			// 无通知权限：由调用方（handler case 0）负责走自动安装，此处直接返回
 			return;
 		}
 		ensureDownloadChannel();
@@ -508,11 +529,15 @@ public class UpdateManager {
 		try {
 			File apkfile = new File(mContext.getExternalFilesDir(savePath), saveFileName);
 			if (!apkfile.exists()) {
+				// 安装包缺失（下载中断残留清理等）：明确提示而不是静默返回（否则表现为"卡住不动"）
+				showDownloadFailedNotification("安装包不存在，请重新下载更新");
 				return;
 			}
 			mContext.startActivity(buildInstallIntent());
 		} catch (Exception e) {
 			e.printStackTrace();
+			// 自动安装失败：退回为通知点击安装（showInstallNotification 无通知权限时静默返回，不会递归）
+			showInstallNotification();
 		}
 	}
 }

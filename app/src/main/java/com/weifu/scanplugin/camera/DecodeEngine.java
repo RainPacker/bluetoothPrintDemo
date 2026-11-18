@@ -103,9 +103,23 @@ class DecodeEngine {
         }
 
         // ===== 第 3 层：Java DPM 兜底管线（均衡化/锐化/去噪等特殊预处理）=====
-        result = decodeGrayDpm(small, sw, sh);
+        // 关键：small 已是 factor-3 降采样图（点距≈16px→5.5px，理想解码尺度），
+        // 传入 preDownscaled=true 跳过内部二次 /2——原实现二次降采样把点距压到
+        // 2.8px，圆点被抹没（离线测试证实：点距5~7px成功、2.8px全败）
+        result = decodeGrayDpm(small, sw, sh, true);
         if (result != null) {
             return result;
+        }
+
+        // ===== 第 3.5 层：/2 尺度圆点 DM 专项 =====
+        // 实拍图参数扫描验证：点距经降采样后 ≈9~10px 是圆点 DM 解码甜蜜区；
+        // 码占画面较大时 /3 图点距过小（实拍验证失败），需补 /2 尺度尝试
+        if (factor > 2) {
+            byte[] half = ImagePreprocessor.downscale(gray, width, height, 2);
+            result = decodeGrayDpm(half, width / 2, height / 2, true);
+            if (result != null) {
+                return result;
+            }
         }
         return decodeFullResRoi(gray, width, height);
     }
@@ -285,9 +299,10 @@ class DecodeEngine {
         if (r != null) {
             return r;
         }
-        // 圆点 DM 兜底：填洞（高光坑底呈黑环+白心）+ 二次闭运算（弥合点间隙）
+        // 圆点 DM 兜底：填洞（高光坑底呈黑环+白心）→ 开运算去噪 → 闭运算弥合点间隙
         byte[] dot = bin.clone();
         ImagePreprocessor.fillHoles(dot, cropW, cropH);
+        ImagePreprocessor.denoise(dot, cropW, cropH);
         ImagePreprocessor.closeMorph(dot, cropW, cropH, 2);
         r = tryDecode(new GrayscaleSource(dot, cropW, cropH), false);
         if (r != null) {
@@ -329,7 +344,23 @@ class DecodeEngine {
         if (!dpmMode) {
             return null;
         }
-        return decodeGrayDpm(gray, w, h);
+        Result r = decodeGrayDpm(gray, w, h);
+        if (r != null) {
+            return r;
+        }
+        // 多尺度补充：相册大图（限 1600px）中圆点 DM 点距可能仍远大于解码甜蜜区
+        // （点距/降采样后 ≈9~10px，实拍验证），依次补 /4、/8 档
+        for (int f : new int[]{4, 8}) {
+            if (w / f < 120 || h / f < 120) {
+                break;
+            }
+            byte[] s = ImagePreprocessor.downscale(gray, w, h, f);
+            r = decodeGrayDpm(s, w / f, h / f, true);
+            if (r != null) {
+                return r;
+            }
+        }
+        return null;
     }
 
     /**
@@ -341,12 +372,29 @@ class DecodeEngine {
      * 5. 多级 ROI 放大（中心 50% 2x / 30% 3x，覆盖小尺寸 DM 码）
      */
     private Result decodeGrayDpm(byte[] gray, int width, int height) {
-        // 全帧增强管线在 1/2 降采样图上执行：像素量降 4 倍 → 单帧耗时大幅下降 →
-        // 单位时间可尝试更多帧，金属刻印码靠多帧概率累积的效率显著提升。
-        // ROI 放大路径仍用原始分辨率，保证小尺寸码的模块细节不损失。
-        int dw = Math.max(1, width / 2);
-        int dh = Math.max(1, height / 2);
-        byte[] small = ImagePreprocessor.downscale(gray, width, height, 2);
+        return decodeGrayDpm(gray, width, height, false);
+    }
+
+    /**
+     * @param preDownscaled true=输入已是降采样图（如 decodeYuv 的 factor-3 图），
+     *                      跳过内部 /2，避免二次降采样把圆点 DM 点距压到不可解码尺度；
+     *                      false=原始大图（相册路径），保持内部 /2 降采样提速
+     */
+    private Result decodeGrayDpm(byte[] gray, int width, int height, boolean preDownscaled) {
+        int dw, dh;
+        byte[] small;
+        if (preDownscaled) {
+            dw = width;
+            dh = height;
+            small = gray;
+        } else {
+            // 全帧增强管线在 1/2 降采样图上执行：像素量降 4 倍 → 单帧耗时大幅下降 →
+            // 单位时间可尝试更多帧，金属刻印码靠多帧概率累积的效率显著提升。
+            // ROI 放大路径仍用原始分辨率，保证小尺寸码的模块细节不损失。
+            dw = Math.max(1, width / 2);
+            dh = Math.max(1, height / 2);
+            small = ImagePreprocessor.downscale(gray, width, height, 2);
+        }
 
         // 1. 直方图均衡化（比线性对比度拉伸更适合非线性光照）
         byte[] enhanced = small.clone();
@@ -418,21 +466,53 @@ class DecodeEngine {
         r = tryDecodeBinWithInvert(filled2, dw, dh);
         if (r != null) return r;
 
-        // 低对比变体：C=6（弱黑点也可判黑），填洞 + 二次闭运算
-        byte[] binLow = enhanced.clone();
-        ImagePreprocessor.adaptiveThreshold(binLow, dw, dh, ImagePreprocessor.ADAPTIVE_WINDOW, 6);
-        ImagePreprocessor.fillHoles(binLow, dw, dh);
-        ImagePreprocessor.closeMorph(binLow, dw, dh, 2);
-        r = tryDecodeBinWithInvert(binLow, dw, dh);
+        // 离线合成图测试验证的最优链（变体 22/23 均成功）：
+        // fillHoles（高光环点→实心盘，实心盘能扛住开运算）→ denoise（清背景散点）
+        // → 闭运算（弥合点间隙）。顺序不可颠倒：先去噪会把环形圆点一并抹掉
+        byte[] dotSolid = binRaw.clone();
+        ImagePreprocessor.fillHoles(dotSolid, dw, dh);
+        ImagePreprocessor.denoise(dotSolid, dw, dh);
+        r = tryDecodeBinWithInvert(dotSolid, dw, dh);
+        if (r != null) return r;
+        ImagePreprocessor.closeMorph(dotSolid, dw, dh);
+        r = tryDecodeBinWithInvert(dotSolid, dw, dh);
+        if (r != null) return r;
+        ImagePreprocessor.closeMorph(dotSolid, dw, dh);
+        r = tryDecodeBinWithInvert(dotSolid, dw, dh);
         if (r != null) return r;
 
-        // Java 引擎全部失败 → 把二值化成果交给 zxing-cpp（C++ DM 解码器远强于 Java 版），
-        // tryInvert 已开启，无需反色重试
+        // 实拍图参数扫描验证的成功参数带（唯一命中链族）：
+        // 原始灰度（无均衡化——均衡化会放大喷砂噪声对比度导致全败）
+        // + 低阈值 C=4~8 + fillHoles→denoise→close1~3
+        // 窗口覆盖 25（≈4 点距）与 61（≈6 点距）两档
+        for (int lowWin : new int[]{ImagePreprocessor.ADAPTIVE_WINDOW, 61}) {
+            if (lowWin >= Math.min(dw, dh) - 2) {
+                continue;
+            }
+            for (int lowC : new int[]{4, 6}) {
+                byte[] lowBin = small.clone();
+                ImagePreprocessor.adaptiveThreshold(lowBin, dw, dh, lowWin, lowC);
+                ImagePreprocessor.fillHoles(lowBin, dw, dh);
+                ImagePreprocessor.denoise(lowBin, dw, dh);
+                ImagePreprocessor.closeMorph(lowBin, dw, dh);
+                r = tryDecodeBinWithInvert(lowBin, dw, dh);
+                if (r != null) return r;
+                ImagePreprocessor.closeMorph(lowBin, dw, dh);
+                r = tryDecodeBinWithInvert(lowBin, dw, dh);
+                if (r != null) return r;
+                if (lowWin == 61 && lowC == 4) {
+                    // 实拍扫描命中参数的 zxing-cpp 兜底（C++ 容错远强于 Java 版，
+                    // tryInvert 已开启）
+                    r = cppDecode(grayToBitmap(lowBin, dw, dh), cppReaderGlobal);
+                    if (r != null) return r;
+                }
+            }
+        }
+
+        // Java 引擎全部失败 → 把二值化成果交给 zxing-cpp
+        r = cppDecode(grayToBitmap(dotSolid, dw, dh), cppReaderGlobal);
+        if (r != null) return r;
         r = cppDecode(grayToBitmap(close2, dw, dh), cppReaderGlobal);
-        if (r != null) return r;
-        r = cppDecode(grayToBitmap(filled2, dw, dh), cppReaderGlobal);
-        if (r != null) return r;
-        r = cppDecode(grayToBitmap(binLow, dw, dh), cppReaderGlobal);
         if (r != null) return r;
 
         // 6. 多级 ROI 放大（小尺寸 DM 码，原始分辨率）：中心 50% 2x → 30% 3x
@@ -477,9 +557,10 @@ class DecodeEngine {
         r = tryDecode(new GrayscaleSource(roiInv, roiW, roiH), false);
         if (r != null) return r;
 
-        // 圆点 DM 兜底：填洞（高光坑底呈黑环+白心）+ 二次闭运算（弥合点间隙）
+        // 圆点 DM 兜底：填洞（高光坑底呈黑环+白心）→ 开运算去噪 → 闭运算弥合点间隙
         byte[] roiDot = roiBin.clone();
         ImagePreprocessor.fillHoles(roiDot, roiW, roiH);
+        ImagePreprocessor.denoise(roiDot, roiW, roiH);
         ImagePreprocessor.closeMorph(roiDot, roiW, roiH, 2);
         r = tryDecode(new GrayscaleSource(roiDot, roiW, roiH), false);
         if (r != null) return r;
@@ -490,16 +571,27 @@ class DecodeEngine {
     }
 
     /**
-     * 圆点 DM 二值变体尝试：正/反色各试一次（Java 引擎）
+     * 圆点 DM 二值变体尝试：GlobalHist/Hybrid 二值器 × 正/反色（Java 引擎）。
+     * 同一数据换二值器无拷贝开销，临界质量二值图的成功率明显提升。
      */
     private Result tryDecodeBinWithInvert(byte[] bin, int width, int height) {
-        Result r = tryDecode(new GrayscaleSource(bin, width, height), false);
+        GrayscaleSource source = new GrayscaleSource(bin, width, height);
+        Result r = tryDecode(source, false);
+        if (r != null) {
+            return r;
+        }
+        r = tryDecode(source, true);
         if (r != null) {
             return r;
         }
         byte[] inv = bin.clone();
         ImagePreprocessor.invert(inv);
-        return tryDecode(new GrayscaleSource(inv, width, height), false);
+        GrayscaleSource invSource = new GrayscaleSource(inv, width, height);
+        r = tryDecode(invSource, false);
+        if (r != null) {
+            return r;
+        }
+        return tryDecode(invSource, true);
     }
 
     private Result tryDecode(LuminanceSource source, boolean hybrid) {

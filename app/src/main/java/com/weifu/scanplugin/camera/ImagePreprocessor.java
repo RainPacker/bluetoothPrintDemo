@@ -304,6 +304,40 @@ final class ImagePreprocessor {
     }
 
     /**
+     * 3x3 中值滤波（盐椒型颗粒噪声专项）：
+     * 喷砂/金属表面颗粒噪声呈孤立亮暗点，均值类滤波会扩散噪声，
+     * 中值滤波直接剔除孤立极值且保边，先于二值化执行可显著减少背景误判黑点。
+     */
+    static void medianFilter3(byte[] gray, int width, int height) {
+        if (width < 3 || height < 3) {
+            return;
+        }
+        byte[] src = gray.clone();
+        int[] win = new int[9];
+        for (int y = 1; y < height - 1; y++) {
+            for (int x = 1; x < width - 1; x++) {
+                int idx = 0;
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        win[idx++] = src[(y + dy) * width + x + dx] & 0xFF;
+                    }
+                }
+                // 9 元素插入排序取中位（窗口极小，开销可忽略）
+                for (int i = 1; i < 9; i++) {
+                    int v = win[i];
+                    int j = i - 1;
+                    while (j >= 0 && win[j] > v) {
+                        win[j + 1] = win[j];
+                        j--;
+                    }
+                    win[j + 1] = v;
+                }
+                gray[y * width + x] = (byte) win[4];
+            }
+        }
+    }
+
+    /**
      * 3x3 形态学开运算去噪（腐蚀→膨胀，DPM 增强）：
      * 金属表面噪点/划痕在二值化后形成孤立散点，干扰 DM 码 Finder Pattern 检测，
      * 开运算可去除散点并保留码模块结构。

@@ -114,6 +114,8 @@ public class ScanCameraActivity extends AppCompatActivity {
     private ExecutorService cameraExecutor;
     private ToneGenerator toneGenerator;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    // 相册识别中的进度对话框（期间相机扫码暂停，省电且避免双路识别竞争）
+    private android.app.AlertDialog albumProgressDialog;
 
     /**
      * 微信式周期自动对焦：连续对焦（CONTINUOUS_PICTURE）在金属刻印等低对比度表面
@@ -469,9 +471,35 @@ public class ScanCameraActivity extends AppCompatActivity {
             return;
         }
         try {
-            Bitmap bitmap = android.provider.MediaStore.Images.Media.getBitmap(getContentResolver(), uri);
-            // 限制解码尺寸，防止大图 OOM
+            // 两段式采样解码：先读尺寸算 inSampleSize 再载入，
+            // 避免 Media.getBitmap 整图载入内存（大图可达上百 MB，PDA 堆有限易 OOM）
+            android.graphics.BitmapFactory.Options bounds = new android.graphics.BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            java.io.InputStream bis = getContentResolver().openInputStream(uri);
+            if (bis != null) {
+                android.graphics.BitmapFactory.decodeStream(bis, null, bounds);
+                bis.close();
+            }
             int maxSide = 1600;
+            int inSample = 1;
+            while (Math.max(bounds.outWidth, bounds.outHeight) / (inSample * 2) >= maxSide) {
+                inSample *= 2;
+            }
+            android.graphics.BitmapFactory.Options opts = new android.graphics.BitmapFactory.Options();
+            opts.inSampleSize = inSample;
+            Bitmap bitmap = null;
+            java.io.InputStream lis = getContentResolver().openInputStream(uri);
+            if (lis != null) {
+                bitmap = android.graphics.BitmapFactory.decodeStream(lis, null, opts);
+                lis.close();
+            }
+            if (bitmap == null) {
+                Toast.makeText(this, "图片读取失败", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            // EXIF 方向矫正（相机竖拍照片常见 90° 旋转，解码器不读取 EXIF）
+            bitmap = applyExifRotation(uri, bitmap);
+            // 兜底尺寸限制（inSampleSize 粒度为 2 的幂，可能仍未到目标）
             float scale = Math.min(1f, (float) maxSide / Math.max(bitmap.getWidth(), bitmap.getHeight()));
             if (scale < 1f) {
                 bitmap = Bitmap.createScaledBitmap(bitmap,
@@ -479,14 +507,90 @@ public class ScanCameraActivity extends AppCompatActivity {
             }
             final Bitmap finalBitmap = bitmap;
             if (analyzer != null) {
-                Toast.makeText(this, "识别中...", Toast.LENGTH_SHORT).show();
+                // 暂停相机扫码：解码期间不再逐帧分析（省电），
+                // 也避免相机识别与相册识别在解码线程上竞争
+                analyzer.setActive(false);
+                // 暂停超时计时，避免识别中被超时关页；识别失败后重新计时
+                mainHandler.removeCallbacks(timeoutRunnable);
+                showAlbumProgress();
                 analyzer.decodeBitmap(finalBitmap, result ->
-                        mainHandler.post(() -> onDecodeResult(result)));
+                        mainHandler.post(() -> {
+                            dismissAlbumProgress();
+                            if (result == null) {
+                                Toast.makeText(this, "未识别到条码", Toast.LENGTH_SHORT).show();
+                                resumeAfterAlbum();
+                            } else if (!finished) {
+                                deliverResult(result);
+                            }
+                        }));
             }
         } catch (Exception e) {
             Log.e(TAG, "album decode failed", e);
             Toast.makeText(this, "图片读取失败", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    /**
+     * 相册识别进度对话框（模态，直到识别完成/失败才消失）
+     */
+    private void showAlbumProgress() {
+        dismissAlbumProgress();
+        albumProgressDialog = new android.app.AlertDialog.Builder(this)
+                .setMessage("识别中...")
+                .setCancelable(false)
+                .show();
+    }
+
+    private void dismissAlbumProgress() {
+        if (albumProgressDialog != null && albumProgressDialog.isShowing()) {
+            albumProgressDialog.dismiss();
+        }
+        albumProgressDialog = null;
+    }
+
+    /**
+     * 相册识别失败后恢复：重启扫码分析并重新挂载超时计时
+     */
+    private void resumeAfterAlbum() {
+        if (analyzer != null && !finished) {
+            analyzer.setActive(true);
+        }
+        if (timeoutMillis > 0) {
+            mainHandler.removeCallbacks(timeoutRunnable);
+            mainHandler.postDelayed(timeoutRunnable, timeoutMillis);
+        }
+    }
+
+    /**
+     * 按 EXIF 方向旋转相册图片（竖拍照片 Orientation=90/180/270）
+     */
+    private Bitmap applyExifRotation(Uri uri, Bitmap bitmap) {
+        try {
+            java.io.InputStream eis = getContentResolver().openInputStream(uri);
+            if (eis == null) {
+                return bitmap;
+            }
+            android.media.ExifInterface exif = new android.media.ExifInterface(eis);
+            int orientation = exif.getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION,
+                    android.media.ExifInterface.ORIENTATION_NORMAL);
+            eis.close();
+            int degrees = 0;
+            if (orientation == android.media.ExifInterface.ORIENTATION_ROTATE_90) {
+                degrees = 90;
+            } else if (orientation == android.media.ExifInterface.ORIENTATION_ROTATE_180) {
+                degrees = 180;
+            } else if (orientation == android.media.ExifInterface.ORIENTATION_ROTATE_270) {
+                degrees = 270;
+            }
+            if (degrees != 0) {
+                android.graphics.Matrix m = new android.graphics.Matrix();
+                m.postRotate(degrees);
+                return Bitmap.createBitmap(bitmap, 0, 0,
+                        bitmap.getWidth(), bitmap.getHeight(), m, true);
+            }
+        } catch (Exception ignored) {
+        }
+        return bitmap;
     }
 
     /**
@@ -518,8 +622,19 @@ public class ScanCameraActivity extends AppCompatActivity {
         validatedText = null;
         validatedFirstTime = 0;
         Log.i(TAG, "result validated: " + text);
+        deliverResult(result);
+    }
 
-        // ===== 连续模式防抖：确认回调后 0.8s 内同码不重复输出 =====
+    /**
+     * 结果输出（连续模式防抖 + 成功反馈 + 回调 + 页面关闭/连续暂停）：
+     * 相机识别（跨帧验证通过后）与相册识别（单次直接调用）共用
+     */
+    private void deliverResult(Result result) {
+        String text = result.getText();
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
         if (continuous && now - lastResultTime < 800) {
             return;
         }
@@ -612,6 +727,7 @@ public class ScanCameraActivity extends AppCompatActivity {
     protected void onDestroy() {
         finished = true;
         stopAutoFocus();
+        dismissAlbumProgress();
         mainHandler.removeCallbacks(timeoutRunnable);
         if (activeInstance == this) {
             activeInstance = null;

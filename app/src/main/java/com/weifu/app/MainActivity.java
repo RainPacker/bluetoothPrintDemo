@@ -109,7 +109,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
      * 测试模式开关：true 加载本地扫码测试页（assets/test.html），false 加载生产 H5（LOADRL）
      */
     /** 测试页开关：false=生产模式（加载原 H5 地址 + 版本升级检查）；true=本地 test.html 验证扫码插件 */
-    private static final boolean LOAD_TEST_PAGE = false;
+    private static final boolean LOAD_TEST_PAGE = true;
     private WebView webView;
     private final int PICK_REQUEST = 10011;
     ValueCallback<Uri> mFilePathCallback;
