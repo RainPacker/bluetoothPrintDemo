@@ -31,6 +31,24 @@ final class ImagePreprocessor {
      * @param height 高
      */
     static void adaptiveThreshold(byte[] gray, int width, int height) {
+        adaptiveThreshold(gray, width, height, ADAPTIVE_WINDOW, ADAPTIVE_C);
+    }
+
+    /**
+     * 自适应二值化（可调窗口与阈值偏移）：
+     * - 窗口需覆盖 ≥2 个模块间距，否则局部均值跟随圆点自适应，会把点"吃掉"；
+     *   ROI 放大路径中模块间距同步放大，窗口需按放大倍数同步扩大；
+     * - C 是"黑判定余量"：低对比圆点码（点与背景灰度差 < C）需减小 C 才能取到弱黑点。
+     *
+     * @param window 局部均值窗口边长（奇数化处理）
+     * @param c      像素低于局部均值-c 判为黑
+     */
+    static void adaptiveThreshold(byte[] gray, int width, int height, int window, int c) {
+        if (window < 3) {
+            window = 3;
+        } else if (window % 2 == 0) {
+            window++;
+        }
         // 积分图 (width+1) x (height+1)，用 long 防溢出
         long[] integral = new long[(width + 1) * (height + 1)];
         for (int y = 0; y < height; y++) {
@@ -41,7 +59,7 @@ final class ImagePreprocessor {
                         integral[y * (width + 1) + (x + 1)] + rowSum;
             }
         }
-        int half = ADAPTIVE_WINDOW / 2;
+        int half = window / 2;
         for (int y = 0; y < height; y++) {
             int y1 = Math.max(0, y - half);
             int y2 = Math.min(height - 1, y + half);
@@ -55,7 +73,7 @@ final class ImagePreprocessor {
                         + integral[y1 * (width + 1) + x1];
                 int mean = (int) (sum / area);
                 int pixel = gray[y * width + x] & 0xFF;
-                gray[y * width + x] = (byte) (pixel < mean - ADAPTIVE_C ? 0 : 255);
+                gray[y * width + x] = (byte) (pixel < mean - c ? 0 : 255);
             }
         }
     }
@@ -305,13 +323,114 @@ final class ImagePreprocessor {
      * 再腐蚀（恢复边界），把点阵"焊接"成连续模块形态，恢复可解码性。
      */
     static void closeMorph(byte[] bin, int width, int height) {
+        closeMorph(bin, width, height, 1);
+    }
+
+    /**
+     * 多次闭运算（等效半径 iterations 的圆形结构元）：
+     * 击打圆点的点间隙可达 2~3px，单次 3x3 闭运算（半径1）焊不上，
+     * 迭代 2 次等效半径 2，可弥合更宽间隙。
+     *
+     * @param iterations 膨胀/腐蚀迭代次数（>=1）
+     */
+    static void closeMorph(byte[] bin, int width, int height, int iterations) {
+        if (width < 3 || height < 3 || iterations < 1) {
+            return;
+        }
+        // 膨胀 ping-pong：dilateInPlace(dst, src)
+        byte[] cur = bin.clone();
+        for (int i = 0; i < iterations; i++) {
+            byte[] next = cur.clone();
+            dilateInPlace(next, cur, width, height);
+            cur = next;
+        }
+        // 腐蚀 ping-pong：erode 返回新数组
+        for (int i = 0; i < iterations; i++) {
+            cur = erode(cur, width, height);
+        }
+        System.arraycopy(cur, 0, bin, 0, bin.length);
+    }
+
+    /**
+     * 二值图填洞（圆点 DM 高光专项）：
+     * 击打凹坑内壁反光使坑底中心比背景亮，二值化后圆点呈
+     * "黑环 + 白心"而非实心黑块，解码器采样网格完全失配。
+     * 从边界 flood fill 标记与外界连通的白（真背景），
+     * 未被标记的白即"洞"（高光坑底/噪声孔洞）→ 填黑变实心。
+     */
+    static void fillHoles(byte[] bin, int width, int height) {
         if (width < 3 || height < 3) {
             return;
         }
-        byte[] dilated = bin.clone();
-        dilateInPlace(dilated, bin, width, height);
-        byte[] closed = erode(dilated, width, height);
-        System.arraycopy(closed, 0, bin, 0, bin.length);
+        int n = width * height;
+        byte[] outside = new byte[n];   // 1 = 与边界连通的白（真背景）
+        int[] stack = new int[n];       // 手动栈，避免装箱开销
+        int sp = 0;
+        // 边界白像素入栈
+        for (int x = 0; x < width; x++) {
+            int top = x;
+            int bottom = (height - 1) * width + x;
+            if ((bin[top] & 0xFF) == 255 && outside[top] == 0) {
+                outside[top] = 1;
+                stack[sp++] = top;
+            }
+            if ((bin[bottom] & 0xFF) == 255 && outside[bottom] == 0) {
+                outside[bottom] = 1;
+                stack[sp++] = bottom;
+            }
+        }
+        for (int y = 0; y < height; y++) {
+            int left = y * width;
+            int right = y * width + width - 1;
+            if ((bin[left] & 0xFF) == 255 && outside[left] == 0) {
+                outside[left] = 1;
+                stack[sp++] = left;
+            }
+            if ((bin[right] & 0xFF) == 255 && outside[right] == 0) {
+                outside[right] = 1;
+                stack[sp++] = right;
+            }
+        }
+        // 4 邻域 flood fill
+        while (sp > 0) {
+            int p = stack[--sp];
+            int x = p % width;
+            int y = p / width;
+            if (x > 0) {
+                int q = p - 1;
+                if ((bin[q] & 0xFF) == 255 && outside[q] == 0) {
+                    outside[q] = 1;
+                    stack[sp++] = q;
+                }
+            }
+            if (x < width - 1) {
+                int q = p + 1;
+                if ((bin[q] & 0xFF) == 255 && outside[q] == 0) {
+                    outside[q] = 1;
+                    stack[sp++] = q;
+                }
+            }
+            if (y > 0) {
+                int q = p - width;
+                if ((bin[q] & 0xFF) == 255 && outside[q] == 0) {
+                    outside[q] = 1;
+                    stack[sp++] = q;
+                }
+            }
+            if (y < height - 1) {
+                int q = p + width;
+                if ((bin[q] & 0xFF) == 255 && outside[q] == 0) {
+                    outside[q] = 1;
+                    stack[sp++] = q;
+                }
+            }
+        }
+        // 未与背景连通的白 = 洞 → 填黑
+        for (int i = 0; i < n; i++) {
+            if ((bin[i] & 0xFF) == 255 && outside[i] == 0) {
+                bin[i] = 0;
+            }
+        }
     }
 
     /**

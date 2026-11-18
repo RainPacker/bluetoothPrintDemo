@@ -285,6 +285,20 @@ class DecodeEngine {
         if (r != null) {
             return r;
         }
+        // 圆点 DM 兜底：填洞（高光坑底呈黑环+白心）+ 二次闭运算（弥合点间隙）
+        byte[] dot = bin.clone();
+        ImagePreprocessor.fillHoles(dot, cropW, cropH);
+        ImagePreprocessor.closeMorph(dot, cropW, cropH, 2);
+        r = tryDecode(new GrayscaleSource(dot, cropW, cropH), false);
+        if (r != null) {
+            return r;
+        }
+        byte[] dotInv = dot.clone();
+        ImagePreprocessor.invert(dotInv);
+        r = tryDecode(new GrayscaleSource(dotInv, cropW, cropH), false);
+        if (r != null) {
+            return r;
+        }
         byte[] inv = bin.clone();
         ImagePreprocessor.invert(inv);
         return tryDecode(new GrayscaleSource(inv, cropW, cropH), false);
@@ -376,16 +390,49 @@ class DecodeEngine {
             if (r != null) return r;
         }
 
-        // 5.5 圆点 DM（DotPeen）专项：闭运算弥合点间隙
-        // 圆点码每个模块是孤立圆点，点间隙使模块连接性断裂、采样网格失配；
-        // 闭运算（膨胀→腐蚀）把点阵"焊接"成连续模块形态，恢复传统解码器可读性
-        byte[] dotBin = bin.clone();
-        ImagePreprocessor.closeMorph(dotBin, dw, dh);
-        r = tryDecode(new GrayscaleSource(dotBin, dw, dh), false);
+        // 5.5 圆点 DM（DotPeen）专项（基于击打圆点三大失效特征的多变体管线）：
+        // ① 坑底高光：凹坑内壁反光使二值化后圆点呈"黑环+白心" → fillHoles 填实；
+        // ② 点间隙宽（2~3px）：单次 3x3 闭运算焊不上 → 1/2 次闭运算两档；
+        // ③ 低对比：点与喷砂背景灰度差小 → 降低阈值余量 C=6 补充变体；
+        // 注意：不使用开运算去噪（会把细环状圆点连同噪声一起抹掉）
+        byte[] binRaw = enhanced.clone();
+        ImagePreprocessor.adaptiveThreshold(binRaw, dw, dh);
+
+        byte[] close1 = binRaw.clone();
+        ImagePreprocessor.closeMorph(close1, dw, dh);
+        r = tryDecodeBinWithInvert(close1, dw, dh);
         if (r != null) return r;
-        byte[] dotInv = dotBin.clone();
-        ImagePreprocessor.invert(dotInv);
-        r = tryDecode(new GrayscaleSource(dotInv, dw, dh), false);
+
+        byte[] close2 = binRaw.clone();
+        ImagePreprocessor.closeMorph(close2, dw, dh, 2);
+        r = tryDecodeBinWithInvert(close2, dw, dh);
+        if (r != null) return r;
+
+        byte[] filled = binRaw.clone();
+        ImagePreprocessor.fillHoles(filled, dw, dh);
+        r = tryDecodeBinWithInvert(filled, dw, dh);
+        if (r != null) return r;
+
+        byte[] filled2 = filled.clone();
+        ImagePreprocessor.closeMorph(filled2, dw, dh, 2);
+        r = tryDecodeBinWithInvert(filled2, dw, dh);
+        if (r != null) return r;
+
+        // 低对比变体：C=6（弱黑点也可判黑），填洞 + 二次闭运算
+        byte[] binLow = enhanced.clone();
+        ImagePreprocessor.adaptiveThreshold(binLow, dw, dh, ImagePreprocessor.ADAPTIVE_WINDOW, 6);
+        ImagePreprocessor.fillHoles(binLow, dw, dh);
+        ImagePreprocessor.closeMorph(binLow, dw, dh, 2);
+        r = tryDecodeBinWithInvert(binLow, dw, dh);
+        if (r != null) return r;
+
+        // Java 引擎全部失败 → 把二值化成果交给 zxing-cpp（C++ DM 解码器远强于 Java 版），
+        // tryInvert 已开启，无需反色重试
+        r = cppDecode(grayToBitmap(close2, dw, dh), cppReaderGlobal);
+        if (r != null) return r;
+        r = cppDecode(grayToBitmap(filled2, dw, dh), cppReaderGlobal);
+        if (r != null) return r;
+        r = cppDecode(grayToBitmap(binLow, dw, dh), cppReaderGlobal);
         if (r != null) return r;
 
         // 6. 多级 ROI 放大（小尺寸 DM 码，原始分辨率）：中心 50% 2x → 30% 3x
@@ -418,13 +465,41 @@ class DecodeEngine {
         if (r != null) return r;
 
         byte[] roiBin = roi.clone();
-        ImagePreprocessor.adaptiveThreshold(roiBin, roiW, roiH);
+        // 放大 scale 倍后模块间距同步放大，窗口需按倍数扩大，
+        // 否则局部均值跟随圆点自适应会把点"吃掉"
+        ImagePreprocessor.adaptiveThreshold(roiBin, roiW, roiH,
+                ImagePreprocessor.ADAPTIVE_WINDOW * scale, ImagePreprocessor.ADAPTIVE_C);
         r = tryDecode(new GrayscaleSource(roiBin, roiW, roiH), false);
         if (r != null) return r;
 
         byte[] roiInv = roiBin.clone();
         ImagePreprocessor.invert(roiInv);
-        return tryDecode(new GrayscaleSource(roiInv, roiW, roiH), false);
+        r = tryDecode(new GrayscaleSource(roiInv, roiW, roiH), false);
+        if (r != null) return r;
+
+        // 圆点 DM 兜底：填洞（高光坑底呈黑环+白心）+ 二次闭运算（弥合点间隙）
+        byte[] roiDot = roiBin.clone();
+        ImagePreprocessor.fillHoles(roiDot, roiW, roiH);
+        ImagePreprocessor.closeMorph(roiDot, roiW, roiH, 2);
+        r = tryDecode(new GrayscaleSource(roiDot, roiW, roiH), false);
+        if (r != null) return r;
+
+        byte[] roiDotInv = roiDot.clone();
+        ImagePreprocessor.invert(roiDotInv);
+        return tryDecode(new GrayscaleSource(roiDotInv, roiW, roiH), false);
+    }
+
+    /**
+     * 圆点 DM 二值变体尝试：正/反色各试一次（Java 引擎）
+     */
+    private Result tryDecodeBinWithInvert(byte[] bin, int width, int height) {
+        Result r = tryDecode(new GrayscaleSource(bin, width, height), false);
+        if (r != null) {
+            return r;
+        }
+        byte[] inv = bin.clone();
+        ImagePreprocessor.invert(inv);
+        return tryDecode(new GrayscaleSource(inv, width, height), false);
     }
 
     private Result tryDecode(LuminanceSource source, boolean hybrid) {
