@@ -115,7 +115,7 @@ public class ScanCameraActivity extends AppCompatActivity {
     private ToneGenerator toneGenerator;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     // 相册识别中的进度对话框（期间相机扫码暂停，省电且避免双路识别竞争）
-    private android.app.AlertDialog albumProgressDialog;
+    private android.app.Dialog albumProgressDialog;
     // 相册识别进行中：期间丢弃相机解码回调（双保险），防止暂停前排队的帧误触发
     private boolean albumRecognizing = false;
 
@@ -542,14 +542,17 @@ public class ScanCameraActivity extends AppCompatActivity {
     }
 
     /**
-     * 相册识别进度对话框（模态，直到识别完成/失败才消失）
+     * 相册识别进度对话框（居中圆角卡片：转圈 + 提示文字，模态直到完成/失败）
      */
     private void showAlbumProgress() {
         dismissAlbumProgress();
-        albumProgressDialog = new android.app.AlertDialog.Builder(this)
-                .setMessage("识别中...")
-                .setCancelable(false)
-                .show();
+        android.app.Dialog dialog = new android.app.Dialog(this);
+        dialog.setContentView(R.layout.dialog_album_progress);
+        // 窗口透明：只显示卡片本身，四周无系统对话框白底；背景默认变暗聚焦
+        dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        dialog.setCancelable(false);
+        dialog.show();
+        albumProgressDialog = dialog;
     }
 
     private void dismissAlbumProgress() {

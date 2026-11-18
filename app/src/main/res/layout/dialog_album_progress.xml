@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 相册识别进度：居中卡片（转圈 + 提示文字） -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="@drawable/bg_progress_card"
+    android:paddingLeft="24dp"
+    android:paddingRight="28dp"
+    android:paddingTop="20dp"
+    android:paddingBottom="20dp">
+
+    <ProgressBar
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:indeterminate="true"
+        android:indeterminateTint="@color/button_green"
+        style="?android:attr/progressBarStyle" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="14dp"
+        android:text="正在识别图片..."
+        android:textColor="#FF333333"
+        android:textSize="16sp" />
+</LinearLayout>

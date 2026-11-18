@@ -35,6 +35,8 @@ class DecodeEngine {
     private final Set<String> formats;
     // 帧计数（仅解码线程访问）：双尺度交替用
     private int frameCounter = 0;
+    // 上帧解码成功所在的辅降采样尺度（跨帧验证加速：下帧优先复跑同尺度）
+    private int lastSuccessScale = -1;
     // 圆点命中链并行解码池（惰性创建，release 时关闭）
     private java.util.concurrent.ExecutorService dotDecodePool;
 
@@ -106,25 +108,53 @@ class DecodeEngine {
             }
         }
 
-        // ===== 第 3 层：Java DPM 兜底管线（时间复用双尺度）=====
-        // /3 与 /2 逐帧交替（frameCounter 奇偶）：单帧只跑一份全管线。
-        // 原实现 /3、/2 各跑一遍全管线，每帧最坏耗时翻倍（真机识别变慢主因）；
-        // 交替后硬码靠多帧累积在两尺度间自然覆盖（多帧概率累积不受影响）。
-        // 传入 preDownscaled=true：输入已是降采样图，跳过内部二次 /2
-        // （二次降采样把点距压到 2.8px，圆点被抹没——离线测试证实）
+        // ===== 第 3 层：Java DPM 兜底管线（多尺度时间复用）=====
+        // 相册快/相机慢的差异根源：相册 397px 图 /2 后点距恰落 9~10px 甜蜜区，
+        // 而 1080p 相机帧同取景点距可达 ~90px，/2、/3 全部落到甜蜜区外，
+        // 需要 /8~10 才能进入。策略：
+        // 3.0 命中尺度记忆：上帧曾在某辅尺度解码成功（待跨帧确认），本帧优先
+        //     复跑同尺度 → 第二帧立即再次命中，快速通过验证出码
+        // 3.1 主尺度 /3、/2 逐帧交替全管线（近距离/小码场景）
+        // 3.2 辅尺度 {4,5,6,8,10} 逐帧轮转，只跑并行命中链 + C++ 兜底
+        //     （高倍降采样像素量小，代价几十 ms；多帧累积覆盖全尺度带）
+        frameCounter++;
+        if (lastSuccessScale >= 2
+                && width / lastSuccessScale >= 120 && height / lastSuccessScale >= 120) {
+            int s = lastSuccessScale;
+            byte[] img = ImagePreprocessor.downscale(gray, width, height, s);
+            result = decodeDotChainsParallel(img, width / s, height / s);
+            if (result == null) {
+                result = cppDotProbe(img, width / s, height / s);
+            }
+            if (result != null) {
+                return result;
+            }
+        }
+
         byte[] workImg = small;
         int workW = sw, workH = sh;
-        if (factor > 2) {
-            frameCounter++;
-            if ((frameCounter & 1) == 0) {
-                workImg = ImagePreprocessor.downscale(gray, width, height, 2);
-                workW = width / 2;
-                workH = height / 2;
-            }
+        if (factor > 2 && (frameCounter & 1) == 0) {
+            workImg = ImagePreprocessor.downscale(gray, width, height, 2);
+            workW = width / 2;
+            workH = height / 2;
         }
         result = decodeGrayDpm(workImg, workW, workH, true);
         if (result != null) {
             return result;
+        }
+
+        int[] auxScales = {4, 5, 6, 8, 10};
+        int aux = auxScales[frameCounter % auxScales.length];
+        if (aux != lastSuccessScale && width / aux >= 120 && height / aux >= 120) {
+            byte[] img = ImagePreprocessor.downscale(gray, width, height, aux);
+            result = decodeDotChainsParallel(img, width / aux, height / aux);
+            if (result == null) {
+                result = cppDotProbe(img, width / aux, height / aux);
+            }
+            if (result != null) {
+                lastSuccessScale = aux;
+                return result;
+            }
         }
         return decodeFullResRoi(gray, width, height);
     }
@@ -455,15 +485,8 @@ class DecodeEngine {
         if (r != null) return r;
 
         // ② 命中参数链交 zxing-cpp（C++ DM 容错远强于 Java 版，tryInvert 已开启）
-        if (61 < Math.min(dw, dh) - 2) {
-            byte[] winner = small.clone();
-            ImagePreprocessor.adaptiveThreshold(winner, dw, dh, 61, 4);
-            ImagePreprocessor.fillHoles(winner, dw, dh);
-            ImagePreprocessor.denoise(winner, dw, dh);
-            ImagePreprocessor.closeMorph(winner, dw, dh);
-            r = cppDecode(grayToBitmap(winner, dw, dh), cppReaderGlobal);
-            if (r != null) return r;
-        }
+        r = cppDotProbe(small, dw, dh);
+        if (r != null) return r;
 
         // ③ 均衡化变体（未命中时补充覆盖，串行）
         byte[] binRaw = enhanced.clone();
@@ -563,6 +586,22 @@ class DecodeEngine {
         byte[] roiDotInv = roiDot.clone();
         ImagePreprocessor.invert(roiDotInv);
         return tryDecode(new GrayscaleSource(roiDotInv, roiW, roiH), false);
+    }
+
+    /**
+     * 实拍命中参数 (win=61, C=4) 链的 zxing-cpp 兜底（C++ DM 容错远强于 Java 版，
+     * tryInvert 已开启）。低像素量时代价小，供主尺度与辅尺度探针复用。
+     */
+    private Result cppDotProbe(byte[] gray, int width, int height) {
+        if (61 >= Math.min(width, height) - 2) {
+            return null;
+        }
+        byte[] bin = gray.clone();
+        ImagePreprocessor.adaptiveThreshold(bin, width, height, 61, 4);
+        ImagePreprocessor.fillHoles(bin, width, height);
+        ImagePreprocessor.denoise(bin, width, height);
+        ImagePreprocessor.closeMorph(bin, width, height);
+        return cppDecode(grayToBitmap(bin, width, height), cppReaderGlobal);
     }
 
     /**
