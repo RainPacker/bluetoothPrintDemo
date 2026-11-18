@@ -52,7 +52,7 @@
             android:theme="@style/Theme.AppCompat.NoActionBar"
             android:exported="false"></activity>
         <provider
-            android:authorities="com.weifu.pmsdev1.fileprovider"
+            android:authorities="com.weifu.momtt.fileprovider"
             android:name="androidx.core.content.FileProvider"
             android:grantUriPermissions="true"
             android:screenOrientation="fullSensor"
