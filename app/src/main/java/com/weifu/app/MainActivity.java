@@ -108,7 +108,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     /**
      * 测试模式开关：true 加载本地扫码测试页（assets/test.html），false 加载生产 H5（LOADRL）
      */
-    private static final boolean LOAD_TEST_PAGE = true;
+    /** 测试页开关：false=生产模式（加载原 H5 地址 + 版本升级检查）；true=本地 test.html 验证扫码插件 */
+    private static final boolean LOAD_TEST_PAGE = false;
     private WebView webView;
     private final int PICK_REQUEST = 10011;
     ValueCallback<Uri> mFilePathCallback;
@@ -160,13 +161,12 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         // 测试模式跳过版本检查：模拟器/本地测试无法访问生产 version_url，
         // 几秒后网络超时会从后台 MainActivity 弹出错误 Dialog 覆盖前台扫码页，
         // 造成"扫码页自己旋转 + toast 提示"的假象
-        if (!LOAD_TEST_PAGE) {
-            new Thread(()->{
-                Looper.prepare();
-                updateApk();
-                Looper.loop();
-            }).start();
-        }
+        // 版本升级检查（生产逻辑，无条件执行；UpdateManager 已含 5s 网络超时保护）
+        new Thread(()->{
+            Looper.prepare();
+            updateApk();
+            Looper.loop();
+        }).start();
 
        // initReceiver();
      //   getPermission();

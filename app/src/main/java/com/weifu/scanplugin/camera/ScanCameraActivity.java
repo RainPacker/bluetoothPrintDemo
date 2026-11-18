@@ -160,6 +160,9 @@ public class ScanCameraActivity extends AppCompatActivity {
     private long timeoutMillis;
     private boolean finished = false;
     private long lastResultTime;
+    /** 帧间一致性验证：待确认文本（同文本跨帧出现 2 次才确认输出，防单帧误读） */
+    private String validatedText;
+    private long validatedFirstTime;
 
     private final Runnable timeoutRunnable = this::finishWithCancel;
     private final ActivityResultLauncher<Intent> albumLauncher =
@@ -488,18 +491,39 @@ public class ScanCameraActivity extends AppCompatActivity {
 
     /**
      * 解码结果处理（F-09 连续模式 / F-15 提示音）
+     * <p>
+     * 帧间一致性验证（F-34，工业读码器标准做法）：
+     * 低质量 DM 帧（反光/网格错位/部分模块误判）可能被 ECC 纠错出各不相同的错误内容，
+     * 而真值在多帧中重复出现——同文本跨帧 ≥2 次才确认输出，单帧误读被自然稀释，
+     * 解决"同一码每次扫描结果不一样"的问题。代价是确认延迟约 1~2 帧（100~200ms）。
      */
     private void onDecodeResult(Result result) {
         if (finished || result == null) {
             return;
         }
+        String text = result.getText();
+        if (text == null || text.isEmpty()) {
+            return;
+        }
         long now = System.currentTimeMillis();
-        // 连续模式防抖：同一码 0.8s 内不重复回调（微信式节奏，原 1.2s 偏慢）
+        // ===== 帧间一致性验证 =====
+        if (!text.equals(validatedText)) {
+            // 与上次待确认文本不同：本帧结果进入待确认状态（首帧不输出）
+            validatedText = text;
+            validatedFirstTime = now;
+            Log.d(TAG, "result pending validation: " + text);
+            return;
+        }
+        // 同文本跨帧再次出现 → 可重复 → 确认（真值唯一，误读内容各异难以重复）
+        validatedText = null;
+        validatedFirstTime = 0;
+        Log.i(TAG, "result validated: " + text);
+
+        // ===== 连续模式防抖：确认回调后 0.8s 内同码不重复输出 =====
         if (continuous && now - lastResultTime < 800) {
             return;
         }
         lastResultTime = now;
-        String text = result.getText();
         Log.i(TAG, "decode success: " + (result.getBarcodeFormat() == null ? "?" : result.getBarcodeFormat().name())
                 + " text=" + text);
         // 成功反馈：震动 + 提示音（结果展示在测试页/H5 回调，不用 Toast 打扰）
@@ -509,7 +533,7 @@ public class ScanCameraActivity extends AppCompatActivity {
         }
         CameraResultListener listener = pendingListener;
         if (listener != null) {
-            listener.onCameraResult(result.getText(),
+            listener.onCameraResult(text,
                     result.getBarcodeFormat() == null ? null : result.getBarcodeFormat().name());
         }
         if (!continuous) {
