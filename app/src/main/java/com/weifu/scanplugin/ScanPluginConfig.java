@@ -19,11 +19,20 @@ public class ScanPluginConfig {
     public static final String FORMAT_EAN_13 = "EAN_13";
     public static final String FORMAT_AZTEC = "AZTEC";
     public static final String FORMAT_PDF_417 = "PDF_417";
+    public static final String FORMAT_CODE_93 = "CODE_93";
+    public static final String FORMAT_EAN_8 = "EAN_8";
+    public static final String FORMAT_UPC_A = "UPC_A";
+    public static final String FORMAT_UPC_E = "UPC_E";
+    public static final String FORMAT_ITF = "ITF";
+    public static final String FORMAT_CODABAR = "CODABAR";
 
     /** 默认全格式（F-23） */
     public static final Set<String> DEFAULT_FORMATS = new HashSet<>(Arrays.asList(
             FORMAT_DATA_MATRIX, FORMAT_QR_CODE, FORMAT_CODE_128, FORMAT_CODE_39,
-            FORMAT_EAN_13, FORMAT_AZTEC, FORMAT_PDF_417));
+            FORMAT_EAN_13, FORMAT_AZTEC, FORMAT_PDF_417,
+            // 一维码补全：缺格式会直接导致对应条码无法解码
+            FORMAT_CODE_93, FORMAT_EAN_8, FORMAT_UPC_A, FORMAT_UPC_E,
+            FORMAT_ITF, FORMAT_CODABAR));
 
     // ---- 默认值 ----
     private static final boolean DEFAULT_DPM = true;
@@ -32,7 +41,8 @@ public class ScanPluginConfig {
     private static final boolean DEFAULT_TORCH = false;
     private static final boolean DEFAULT_ALBUM = true;
     private static final boolean DEFAULT_BEEP = true;
-    private static final int DEFAULT_FRAME_INTERVAL_MS = 200;
+    /** 帧节流：快速路径（降采样 640 宽）单次解码 <20ms，100ms 节流可支撑 10fps 连续解码 */
+    private static final int DEFAULT_FRAME_INTERVAL_MS = 100;
 
     /**
      * DPM 增强模式（F-31）：开启自适应二值化/反色/旋转/多帧融合全管线

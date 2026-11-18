@@ -86,7 +86,7 @@ final class ImagePreprocessor {
             }
             return out;
         }
-        // 90 或 270
+        // 90 或 270（行列主序，目标图行宽 = newWidth = height）
         int newWidth = height;
         int newHeight = width;
         byte[] out = new byte[gray.length];
@@ -95,11 +95,15 @@ final class ImagePreprocessor {
                 int src = y * width + x;
                 int dst;
                 if (degrees == 90) {
-                    // 顺时针 90°: (x,y) -> (newHeight-1-y, x)
-                    dst = x * newWidth + (newHeight - 1 - y);
+                    // 顺时针 90°: (x,y) -> 新图 (x'=height-1-y 列, y'=x 行)
+                    // dst = y' * newWidth + x' = x * newWidth + (height - 1 - y)
+                    // 注意分母是 height（源图高=目标行数相关），原公式误用 newHeight
+                    // 导致 dst 越界（真机竖屏 rotation=90/270 每帧 ArrayIndexOutOfBounds）
+                    dst = x * newWidth + (height - 1 - y);
                 } else {
-                    // 逆时针 90°（顺时针 270°）: (x,y) -> (y, newWidth-1-x)
-                    dst = (newWidth - 1 - x) * newHeight + y;
+                    // 逆时针 90°（顺时针 270°）: (x,y) -> 新图 (x'=y 列, y'=width-1-x 行)
+                    // dst = y' * newWidth + x' = (width - 1 - x) * newWidth + y
+                    dst = (width - 1 - x) * newWidth + y;
                 }
                 out[dst] = gray[src];
             }

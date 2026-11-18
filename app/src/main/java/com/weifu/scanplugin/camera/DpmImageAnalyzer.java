@@ -72,7 +72,10 @@ class DpmImageAnalyzer implements ImageAnalysis.Analyzer {
             java.nio.ByteBuffer buffer = y.getBuffer();
             buffer.rewind();
             int capacity = buffer.remaining();
-            if (capacity < rowStride * height) {
+            // 放宽检查：Y 平面尾行可能不足 rowStride（capacity < rowStride*height 是常态），
+            // 原过严检查导致真机大部分帧被静默丢弃（识别慢的元凶之一）；
+            // 边界安全由 extractGray 的逐行防护保证
+            if (capacity < width) {
                 return;
             }
             yPlane = new byte[capacity];

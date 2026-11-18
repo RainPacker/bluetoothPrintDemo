@@ -10,8 +10,8 @@ android {
         minSdkVersion 21
         //noinspection OldTargetApi
         targetSdkVersion 33
-        versionCode 9
-        versionName "1.0.9"
+        versionCode 11
+        versionName "2.0.2"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -62,6 +62,10 @@ dependencies {
     implementation 'com.symbol:emdk:9.1.1'
     implementation 'com.github.zzz40500:android-shapeLoadingView:1.0.3.2'
     implementation 'com.github.yuzhiqiang1993:zxing:2.2.9'
+    // zxing-cpp（C++ 引擎）：主解码引擎。检测器/解码器对模糊、低对比、DM 刻印、
+    // 一维码的识别率数倍于纯 Java zxing，1080p 全开 tryHarder/tryRotate/tryInvert
+    // 仅需 30~80ms，是业界扫码 app 的标准选择
+    implementation 'io.github.zxing-cpp:android:2.3.0'
 
     // ===== 新扫码插件（ScanPlugin）依赖 =====
     // zxing core 复用旧封装库（com.github.yuzhiqiang1993:zxing:2.2.9）内嵌的 libs/core-3.4.1.jar，

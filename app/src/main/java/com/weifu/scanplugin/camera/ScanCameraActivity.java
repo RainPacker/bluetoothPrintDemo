@@ -494,19 +494,15 @@ public class ScanCameraActivity extends AppCompatActivity {
             return;
         }
         long now = System.currentTimeMillis();
-        // 连续模式防抖：同一码 1.2s 内不重复回调
-        if (continuous && now - lastResultTime < 1200) {
+        // 连续模式防抖：同一码 0.8s 内不重复回调（微信式节奏，原 1.2s 偏慢）
+        if (continuous && now - lastResultTime < 800) {
             return;
         }
         lastResultTime = now;
-        // 诊断提示：扫码成功的可见反馈（若此 Toast 出现而测试页无结果，说明回调链路断；
-        // 若此 Toast 不出现，说明识别失败，问题在解码侧）
         String text = result.getText();
         Log.i(TAG, "decode success: " + (result.getBarcodeFormat() == null ? "?" : result.getBarcodeFormat().name())
                 + " text=" + text);
-        Toast.makeText(this, "识别成功: "
-                + (text != null && text.length() > 40 ? text.substring(0, 40) + "…" : text), Toast.LENGTH_LONG).show();
-        // 震动反馈：媒体音量为 0（常见于测试机）时无声，震动保证成功反馈不丢失
+        // 成功反馈：震动 + 提示音（结果展示在测试页/H5 回调，不用 Toast 打扰）
         vibrate();
         if (beepEnabled) {
             playBeep();

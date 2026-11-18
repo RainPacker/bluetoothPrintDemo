@@ -1,6 +1,7 @@
 package com.weifu.scanplugin.camera;
 
 import android.graphics.Bitmap;
+import android.util.Log;
 
 import com.google.zxing.BinaryBitmap;
 import com.google.zxing.DecodeHintType;
@@ -27,6 +28,8 @@ import java.util.Set;
  */
 class DecodeEngine {
 
+    private static final String TAG = "DecodeEngine";
+
     private final MultiFormatReader reader = new MultiFormatReader();
     private final boolean dpmMode;
     private final Set<String> formats;
@@ -50,7 +53,7 @@ class DecodeEngine {
         setHints();
         // 提取紧凑灰度图（去除行跨距）
         byte[] gray = extractGray(yPlane, width, height, rowStride);
-        // 按相机旋转角矫正：未矫正时横屏 ROTATION_270 / 竖屏下二维码在帧中是旋转的，快速路径必失败
+        // 按相机旋转角矫正：未矫正时横屏 ROTATION_270 / 竖屏下二维码在帧中是旋转的
         if (rotationDegrees == 90 || rotationDegrees == 180 || rotationDegrees == 270) {
             gray = ImagePreprocessor.rotate(gray, width, height, rotationDegrees);
             if (rotationDegrees == 90 || rotationDegrees == 270) {
@@ -60,38 +63,193 @@ class DecodeEngine {
             }
         }
 
-        // 快速路径（微信策略：中心 ROI 优先）——整帧二值化分块过粗时取景框内的小码必漏检，
-        // 中心裁剪解码既快又稳；随后全帧兜底
-        GrayscaleSource source = new GrayscaleSource(gray, width, height);
-        Result result = tryDecode(cropCenter(source, 0.6f), true);
+        // ===== 第 1 层：zxing-cpp 主引擎（降采样图，大码快扫）=====
+        // C++ 检测器/解码器对模糊、低对比、倾斜一维码、DM 的识别率数倍于 Java 版；
+        // tryRotate/tryInvert 内置全方向全极性重试，无需 Java 侧级联
+        int factor = width > 640 ? 3 : 1;
+        byte[] small = ImagePreprocessor.downscale(gray, width, height, factor);
+        int sw = width / factor;
+        int sh = height / factor;
+        Result result = cppDecode(grayToBitmap(small, sw, sh));
         if (result != null) {
             return result;
         }
-        result = tryDecode(source, true);
-        if (result != null) {
-            return result;
-        }
-        result = tryDecode(cropCenter(source, 0.6f), false);
-        if (result != null) {
-            return result;
-        }
-        result = tryDecode(source, false);
-        if (result != null) {
-            return result;
+
+        // ===== 第 2 层：zxing-cpp 全分辨率（小尺寸码保细节）=====
+        if (factor > 1) {
+            result = cppDecode(grayToBitmap(gray, width, height));
+            if (result != null) {
+                return result;
+            }
         }
 
         if (!dpmMode) {
             return null;
         }
 
-        // DPM 增强路径
-        return decodeGrayDpm(gray, width, height);
+        // ===== 第 3 层：Java DPM 兜底管线（均衡化/锐化/去噪等特殊预处理）=====
+        result = decodeGrayDpm(small, sw, sh);
+        if (result != null) {
+            return result;
+        }
+        return decodeFullResRoi(gray, width, height);
+    }
+
+    /**
+     * zxing-cpp 主引擎（2.3.0 API）：实例类，read(Bitmap) 同步解码。
+     * Options 全开：tryHarder/tryRotate/tryInvert + tryDownscale（C++ 内置多尺度）+
+     * tryDenoise（C++ 内置去噪，DM 刻印码利好）。仅解码线程调用，实例复用安全。
+     */
+    private final zxingcpp.BarcodeReader cppReader;
+
+    {
+        zxingcpp.BarcodeReader.Options opts = new zxingcpp.BarcodeReader.Options();
+        opts.setTryHarder(true);
+        opts.setTryRotate(true);
+        opts.setTryInvert(true);
+        opts.setTryDownscale(true);
+        cppReader = new zxingcpp.BarcodeReader(opts);
+    }
+
+    private Result cppDecode(Bitmap bitmap) {
+        try {
+            java.util.List<zxingcpp.BarcodeReader.Result> results =
+                    cppReader.read(bitmap, new android.graphics.Rect(), 0);
+            if (results != null && !results.isEmpty()) {
+                return toZxingResult(results.get(0));
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "cpp decode failed, fallback to java", t);
+        }
+        return null;
+    }
+
+    /**
+     * zxing-cpp 结果 → zxing Result（保持回调链路统一）
+     * <p>
+     * 乱码修复：DM 工业码（GS1/二进制内容）默认 HRI 文本模式会把 FNC1/GS 分隔符(0x1D)
+     * 等控制字符渲染为空格/不可见字符，中文字符集错配也会乱码。
+     * 按内容类型分流：纯文本用 HRI；其余从原始字节智能解码（UTF-8→GBK→Latin-1），
+     * GS 分隔符转为可读的 '|'。
+     */
+    private static Result toZxingResult(zxingcpp.BarcodeReader.Result r) {
+        com.google.zxing.BarcodeFormat fmt;
+        try {
+            fmt = com.google.zxing.BarcodeFormat.valueOf(r.getFormat().name());
+        } catch (Exception e) {
+            fmt = com.google.zxing.BarcodeFormat.QR_CODE;
+        }
+        return new Result(extractText(r), null, null, fmt);
+    }
+
+    private static String extractText(zxingcpp.BarcodeReader.Result r) {
+        zxingcpp.BarcodeReader.ContentType type = r.getContentType();
+        boolean isPlain = type == zxingcpp.BarcodeReader.ContentType.TEXT;
+        String hri = r.getText();
+        if (isPlain && hri != null && !hasControlChars(hri)) {
+            return hri;
+        }
+        // 非纯文本（GS1/BINARY/MIXED）：从原始字节智能解码
+        byte[] bytes = r.getBytes();
+        if (bytes == null || bytes.length == 0) {
+            return hri == null ? "" : hri;
+        }
+        String decoded = smartDecodeBytes(bytes);
+        // GS 分隔符（0x1D，GS1 元素间隔）转为可读 '|'，其余保留
+        return decoded.replace("\u001D", "|");
+    }
+
+    /**
+     * 检测 HRI 文本是否含未渲染的控制字符（空格/方块乱码的直接来源）
+     */
+    private static boolean hasControlChars(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c < 0x20 && c != '\n' && c != '\r' && c != '\t') {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 智能字节解码：UTF-8 严格校验 → GBK（中文工业标签）→ Latin-1 字节直通
+     */
+    private static String smartDecodeBytes(byte[] bytes) {
+        try {
+            String utf8 = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+            if (!utf8.contains("\uFFFD")) {
+                return utf8;
+            }
+        } catch (Exception ignored) {
+        }
+        try {
+            String gbk = new String(bytes, "GBK");
+            if (!gbk.contains("\uFFFD")) {
+                return gbk;
+            }
+        } catch (Exception ignored) {
+        }
+        return new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1);
+    }
+
+    /**
+     * 灰度 byte[] → ARGB Bitmap（zxing-cpp Bitmap 接口输入）
+     */
+    private static Bitmap grayToBitmap(byte[] gray, int width, int height) {
+        int[] pixels = new int[gray.length];
+        for (int i = 0; i < gray.length; i++) {
+            int v = gray[i] & 0xFF;
+            pixels[i] = 0xFF000000 | (v << 16) | (v << 8) | v;
+        }
+        return Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888);
+    }
+
+    /**
+     * 全分辨率中心 ROI 解码（第 3 层）：均衡化 + 二值化，两级裁剪（50% / 30%）
+     */
+    private Result decodeFullResRoi(byte[] gray, int width, int height) {
+        Result r = fullResRoiOnce(gray, width, height, 0.5f);
+        if (r != null) {
+            return r;
+        }
+        return fullResRoiOnce(gray, width, height, 0.3f);
+    }
+
+    private Result fullResRoiOnce(byte[] gray, int width, int height, float ratio) {
+        int cropW = Math.max(1, (int) (width * ratio));
+        int cropH = Math.max(1, (int) (height * ratio));
+        int offX = (width - cropW) / 2;
+        int offY = (height - cropH) / 2;
+        byte[] roi = new byte[cropW * cropH];
+        for (int y = 0; y < cropH; y++) {
+            System.arraycopy(gray, (offY + y) * width + offX, roi, y * cropW, cropW);
+        }
+        ImagePreprocessor.equalizeHistogram(roi);
+        Result r = tryDecode(new GrayscaleSource(roi, cropW, cropH), true);
+        if (r != null) {
+            return r;
+        }
+        byte[] bin = roi.clone();
+        ImagePreprocessor.adaptiveThreshold(bin, cropW, cropH);
+        r = tryDecode(new GrayscaleSource(bin, cropW, cropH), false);
+        if (r != null) {
+            return r;
+        }
+        byte[] inv = bin.clone();
+        ImagePreprocessor.invert(inv);
+        return tryDecode(new GrayscaleSource(inv, cropW, cropH), false);
     }
 
     /**
      * 解码 Bitmap（相册选图 / F-12）
      */
     Result decodeBitmap(Bitmap bitmap) {
+        // C++ 主引擎直读（彩色 Bitmap，识别率高于先转灰度）
+        Result result = cppDecode(bitmap);
+        if (result != null) {
+            return result;
+        }
         setHints();
         int w = bitmap.getWidth();
         int h = bitmap.getHeight();
@@ -104,11 +262,6 @@ class DecodeEngine {
             int g = (p >> 8) & 0xFF;
             int b = p & 0xFF;
             gray[i] = (byte) ((r * 299 + g * 587 + b * 114) / 1000);
-        }
-        GrayscaleSource source = new GrayscaleSource(gray, w, h);
-        Result result = tryDecode(source, false);
-        if (result != null) {
-            return result;
         }
         if (!dpmMode) {
             return null;
@@ -249,10 +402,20 @@ class DecodeEngine {
     private static byte[] extractGray(byte[] yPlane, int width, int height, int rowStride) {
         byte[] out = new byte[width * height];
         int stride = Math.max(rowStride, width);
+        int cap = yPlane.length;
         for (int y = 0; y < height; y++) {
             int src = y * stride;
-            int dst = y * width;
-            System.arraycopy(yPlane, src, out, dst, width);
+            // Y 平面布局：末行可能不足 rowStride（无 padding 尾部），越界行用上一行灰度近似，
+            // 不再整帧丢弃（原实现此处会 ArrayIndexOutOfBounds，analyze 侧曾为规避而整帧 return）
+            if (src + width > cap) {
+                if (y > 0) {
+                    System.arraycopy(out, (y - 1) * width, out, y * width, width);
+                } else {
+                    java.util.Arrays.fill(out, 0, width, (byte) 128);
+                }
+                continue;
+            }
+            System.arraycopy(yPlane, src, out, y * width, width);
         }
         return out;
     }
