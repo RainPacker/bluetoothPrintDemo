@@ -54,9 +54,106 @@ class DecodeEngine {
     private boolean dimsLogged = false;
     private boolean roiLogged = false;
 
+    // ===== 自动变焦（微信式：检测到小码 → 光学放大 → 点距进甜蜜区）=====
+    /** 自动变焦建议监听：解码线程回调，实现方调 CameraControl.setZoomRatio（线程安全） */
+    interface ZoomRequestListener {
+        void onZoomRequest(float targetRatio);
+    }
+    private volatile ZoomRequestListener zoomListener;
+    // 连续"点距过小"帧计数（防单帧纹理噪声误判，仅解码线程访问）
+    private int smallPitchStreak = 0;
+    // 上次变焦建议时间：冷却 1.5s（zoom 后 AF 重新收敛、帧流稳定需要时间）
+    private long lastZoomReqMs = 0;
+    // 最近一次追踪到疑似码的时间（pending/confirmed 任一）：超时回退依据
+    private long lastTrackMs = 0;
+    // 数码 zoom 上限 3x：超过后画质插值衰减，DotPeen 码 2.5x+ 对焦距离已足够
+    private static final float AUTO_ZOOM_MAX = 3.0f;
+    private static final long AUTO_ZOOM_COOLDOWN_MS = 1500;
+
+    void setZoomListener(ZoomRequestListener l) {
+        this.zoomListener = l;
+    }
+
+    /**
+     * 自动变焦决策（仅解码线程调用，decodeCascade 的 pitchEst 之后）：
+     * pitchEst 3~7 = 点距低于甜蜜区一半，码太远/太小 → 建议光学变焦
+     * 把点距推到 ~9.5px（与软放大同公式，但光学放大保留真实像素，
+     * 质量高于 upscale 插值——zoom 后 pitchEst 变大，软放大自然不再触发）；
+     * 连续 2 帧小点距才触发（防噪声）；冷却防 zoom 后反复震荡。
+     * 回退：6s 未追踪到任何疑似码 → 建议 1.0（用户已换目标，3x 视野过窄）。
+     */
+    private void handleAutoZoom(int pitchEst, long now) {
+        ZoomRequestListener l = zoomListener;
+        if (l == null) {
+            return;
+        }
+        boolean small = pitchEst >= 3 && pitchEst <= 7;
+        if (small) {
+            smallPitchStreak++;
+        } else {
+            smallPitchStreak = 0;
+        }
+        if (now - lastZoomReqMs <= AUTO_ZOOM_COOLDOWN_MS) {
+            return;
+        }
+        if (small && smallPitchStreak >= 2) {
+            // 目标倍率 0.5 步进：pitchEst=4→2.5x、5→2.0x、7→1.5x
+            float target = Math.round(9.5f / pitchEst * 2f) / 2f;
+            target = Math.max(1.5f, Math.min(AUTO_ZOOM_MAX, target));
+            lastZoomReqMs = now;
+            Log.i(TAG, "zoom req " + target + " pitchEst=" + pitchEst);
+            ScanFileLog.log("zoom req " + target + " pitchEst=" + pitchEst);
+            l.onZoomRequest(target);
+            return;
+        }
+        // 回退：长时间无码信号（点距不可测或过大）且 6s 无任何追踪命中
+        boolean noSignal = pitchEst < 3 || pitchEst > 11;
+        if (noSignal && now - lastTrackMs > 6000) {
+            lastTrackMs = now; // 防止冷却期内每帧重复请求
+            lastZoomReqMs = now;
+            Log.i(TAG, "zoom reset 1.0");
+            ScanFileLog.log("zoom reset 1.0");
+            l.onZoomRequest(1.0f);
+        }
+    }
+
     DecodeEngine(boolean dpmMode, Set<String> formats) {
         this.dpmMode = dpmMode;
         this.formats = formats;
+        // DPM 模式限定 cpp 层格式为 {DATA_MATRIX, QR_CODE}：DM 是业务目标，
+        // QR 是移动端最常见码（H5 跳转链接）必须保持 cpp1 首帧直出（非 DM
+        // 结果无跨帧确认，40ms 即出码）；其余 11 种格式（一维码/PDF417 等）
+        // 从 cpp 每帧全格式扫描中排除，单帧省 30~50ms 全部让给慢层多帧累积。
+        // 排除的格式仍有 Java 级联兜底（hints 按调用方 formats 配置全量设置）
+        java.util.Set<zxingcpp.BarcodeReader.Format> cppFormats = dpmMode
+                ? java.util.EnumSet.of(
+                        zxingcpp.BarcodeReader.Format.DATA_MATRIX,
+                        zxingcpp.BarcodeReader.Format.QR_CODE)
+                : null;
+        zxingcpp.BarcodeReader.Options opts = new zxingcpp.BarcodeReader.Options();
+        opts.setTryHarder(true);
+        opts.setTryRotate(true);
+        opts.setTryInvert(true);
+        opts.setTryDownscale(true);
+        if (cppFormats != null) {
+            opts.setFormats(cppFormats);
+        }
+        // TextMode.PLAIN：text 每字符 = 原始字节的 Latin-1 一对一映射（0x00~0xFF 全量直通，
+        // 控制字符原样保留，无 HRI 转义/替换层），Java 侧经 ISO-8859-1 可无损还原原始
+        // 字节流，再按内容做智能字符集解码（DM 乱码根治）
+        opts.setTextMode(zxingcpp.BarcodeReader.TextMode.PLAIN);
+        cppReader = new zxingcpp.BarcodeReader(opts);
+        zxingcpp.BarcodeReader.Options globalOpts = new zxingcpp.BarcodeReader.Options();
+        globalOpts.setTryHarder(true);
+        globalOpts.setTryRotate(true);
+        globalOpts.setTryInvert(true);
+        globalOpts.setTryDownscale(true);
+        if (cppFormats != null) {
+            globalOpts.setFormats(cppFormats);
+        }
+        globalOpts.setTextMode(zxingcpp.BarcodeReader.TextMode.PLAIN);
+        globalOpts.setBinarizer(zxingcpp.BarcodeReader.Binarizer.GLOBAL_HISTOGRAM);
+        cppReaderGlobal = new zxingcpp.BarcodeReader(globalOpts);
     }
 
     /**
@@ -134,6 +231,7 @@ class DecodeEngine {
         if (text == null || text.isEmpty()) {
             return null;
         }
+        lastTrackMs = android.os.SystemClock.elapsedRealtime(); // 追踪中：变焦回退计时基准
         String key = text;
         // "f"（全分辨率 ROI 粗二值化）垃圾误读率高（真机实测产出 "88"/"07132546"），
         // 确认门槛提高一档
@@ -331,6 +429,7 @@ class DecodeEngine {
 
         int pitchEst = estimatePitch(gray, width, height);
         ScanFileLog.log("pitchEst=" + pitchEst);
+        handleAutoZoom(pitchEst, android.os.SystemClock.elapsedRealtime());
 
         if (pitchEst > 0 && pitchEst <= 11) {
             // 小点距（真机实测 4~6px：码占屏仅 ~7%，1440 宽帧中码约 100px）：
@@ -418,27 +517,6 @@ class DecodeEngine {
      */
     private final zxingcpp.BarcodeReader cppReader;
     private final zxingcpp.BarcodeReader cppReaderGlobal;
-
-    {
-        zxingcpp.BarcodeReader.Options opts = new zxingcpp.BarcodeReader.Options();
-        opts.setTryHarder(true);
-        opts.setTryRotate(true);
-        opts.setTryInvert(true);
-        opts.setTryDownscale(true);
-        // TextMode.PLAIN：text 每字符 = 原始字节的 Latin-1 一对一映射（0x00~0xFF 全量直通，
-        // 控制字符原样保留，无 HRI 转义/替换层），Java 侧经 ISO-8859-1 可无损还原原始
-        // 字节流，再按内容做智能字符集解码（DM 乱码根治）
-        opts.setTextMode(zxingcpp.BarcodeReader.TextMode.PLAIN);
-        cppReader = new zxingcpp.BarcodeReader(opts);
-        zxingcpp.BarcodeReader.Options globalOpts = new zxingcpp.BarcodeReader.Options();
-        globalOpts.setTryHarder(true);
-        globalOpts.setTryRotate(true);
-        globalOpts.setTryInvert(true);
-        globalOpts.setTryDownscale(true);
-        globalOpts.setTextMode(zxingcpp.BarcodeReader.TextMode.PLAIN);
-        globalOpts.setBinarizer(zxingcpp.BarcodeReader.Binarizer.GLOBAL_HISTOGRAM);
-        cppReaderGlobal = new zxingcpp.BarcodeReader(globalOpts);
-    }
 
     private Result cppDecode(Bitmap bitmap, zxingcpp.BarcodeReader reader) {
         try {
@@ -747,6 +825,16 @@ class DecodeEngine {
         byte[] enhanced = small.clone();
         ImagePreprocessor.equalizeHistogram(enhanced);
         Result r = tryDecode(new GrayscaleSource(enhanced, dw, dh), true);
+        if (r != null) {
+            if (collectList != null) collectList.add(r); else return r;
+        }
+
+        // 1.5 CLAHE 分块自适应均衡化：金属面局部反光/阴影（一亮一暗分区）时
+        // 全局均衡化会把亮区压白、暗区压黑，分块均衡化保留局部对比度；
+        // clipLimit 抑制喷砂噪声放大
+        byte[] cl = small.clone();
+        ImagePreprocessor.clahe(cl, dw, dh);
+        r = tryDecode(new GrayscaleSource(cl, dw, dh), true);
         if (r != null) {
             if (collectList != null) collectList.add(r); else return r;
         }

@@ -231,6 +231,94 @@ final class ImagePreprocessor {
     }
 
     /**
+     * CLAHE 限制对比度自适应直方图均衡化（DPM 增强）：
+     * 8x8 分块各自均衡化 + clipLimit 抑制噪声放大 + tile 间双线性插值消除块边界。
+     * 与全局 equalizeHistogram 的差异：金属面局部反光/阴影导致"一亮一暗两个区域"
+     * 时，全局均衡化会把亮区压成一片白、暗区一片黑，分块均衡化保留局部对比度——
+     * 正是金属打标码光照不均场景的对症手段。喷砂噪声的对比度放大由 clipLimit 约束。
+     */
+    static void clahe(byte[] gray, int width, int height) {
+        final int GX = 8, GY = 8;
+        // tile 最小 16px：更小时统计失真，退化不值得做
+        if (width < GX * 16 || height < GY * 16) {
+            return;
+        }
+        int tx = width / GX;
+        int ty = height / GY;
+        short[][] luts = new short[GY * GX][256];
+        for (int gy = 0; gy < GY; gy++) {
+            for (int gx = 0; gx < GX; gx++) {
+                int x0 = gx * tx;
+                int y0 = gy * ty;
+                int x1 = (gx == GX - 1) ? width : (gx + 1) * tx;
+                int y1 = (gy == GY - 1) ? height : (gy + 1) * ty;
+                int[] hist = new int[256];
+                for (int y = y0; y < y1; y++) {
+                    for (int x = x0; x < x1; x++) {
+                        hist[gray[y * width + x] & 0xFF]++;
+                    }
+                }
+                int area = (x1 - x0) * (y1 - y0);
+                // clipLimit factor=3：clip = 3*area/256（OpenCV 相同换算公式）
+                int clip = 3 * area / 256;
+                if (clip < 1) {
+                    clip = 1;
+                }
+                int surplus = 0;
+                for (int i = 0; i < 256; i++) {
+                    if (hist[i] > clip) {
+                        surplus += hist[i] - clip;
+                        hist[i] = clip;
+                    }
+                }
+                int bonus = surplus / 256;
+                int acc = 0;
+                for (int i = 0; i < 256; i++) {
+                    acc += hist[i] + bonus;
+                    int v = acc * 255 / area;
+                    luts[gy * GX + gx][i] = (short) Math.min(255, v);
+                }
+            }
+        }
+        // 双线性插值映射：以 tile 中心为锚点，4 邻 tile LUT 加权；出界侧 clamp
+        // 退化为最近 tile（边缘与角落平滑过渡，无块状边界）
+        int halfX = tx / 2, halfY = ty / 2;
+        for (int y = 0; y < height; y++) {
+            float fy = (y - halfY) / (float) ty;
+            int gy0 = (int) Math.floor(fy);
+            float wy = fy - gy0;
+            if (gy0 < 0) {
+                gy0 = 0;
+            }
+            if (gy0 > GY - 1) {
+                gy0 = GY - 1;
+            }
+            int gy1 = Math.min(GY - 1, gy0 + 1);
+            int rowBase = y * width;
+            for (int x = 0; x < width; x++) {
+                float fx = (x - halfX) / (float) tx;
+                int gx0 = (int) Math.floor(fx);
+                float wx = fx - gx0;
+                if (gx0 < 0) {
+                    gx0 = 0;
+                }
+                if (gx0 > GX - 1) {
+                    gx0 = GX - 1;
+                }
+                int gx1 = Math.min(GX - 1, gx0 + 1);
+                int v = gray[rowBase + x] & 0xFF;
+                short[] l00 = luts[gy0 * GX + gx0];
+                short[] l10 = luts[gy0 * GX + gx1];
+                short[] l01 = luts[gy1 * GX + gx0];
+                short[] l11 = luts[gy1 * GX + gx1];
+                float top = l00[v] + (l10[v] - l00[v]) * wx;
+                float bot = l01[v] + (l11[v] - l01[v]) * wx;
+                gray[rowBase + x] = (byte) (top + (bot - top) * wy + 0.5f);
+            }
+        }
+    }
+
+    /**
      * 3x3 拉普拉斯锐化（DPM 增强）：
      * 增强刻印码模块边界，反光模糊场景下提升模块可分辨度。
      * 核：[0,-1,0][-1,5,-1][0,-1,0]

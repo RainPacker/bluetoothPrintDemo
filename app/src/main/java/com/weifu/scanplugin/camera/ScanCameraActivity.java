@@ -109,7 +109,8 @@ public class ScanCameraActivity extends AppCompatActivity {
     private ImageView torchIcon;
     private TextView dpmBadge;
 
-    private Camera camera;
+    // 解码线程（自动变焦回调）与主线程（bindCamera）跨线程访问，volatile 保证可见性
+    private volatile Camera camera;
     private ProcessCameraProvider cameraProvider;
     private DpmImageAnalyzer analyzer;
     private ExecutorService cameraExecutor;
@@ -369,6 +370,26 @@ public class ScanCameraActivity extends AppCompatActivity {
             cameraExecutor = Executors.newSingleThreadExecutor();
             final ScanPluginConfig config = pendingConfig != null ? pendingConfig : new ScanPluginConfig();
             DecodeEngine decodeEngine = new DecodeEngine(dpmMode, config.getFormats());
+            // 自动变焦（微信式）：解码器检测到小点距（码远/小）→ 光学放大推高
+            // 点距进甜蜜区；CameraControl 线程安全，回调直接在解码线程调用。
+            // 与双指缩放共用 camera 状态，手动缩放覆盖自动值（用户最后操作优先）
+            if (dpmMode) {
+                decodeEngine.setZoomListener(target -> {
+                    Camera cam = camera;
+                    if (cam == null) {
+                        return;
+                    }
+                    // 目标与当前倍率一致（含手动缩放先到位）时跳过，避免无谓的
+                    // 对焦重建（回退 1.0 建议若用户已手动调回也在此拦截）
+                    androidx.camera.core.ZoomState st =
+                            cam.getCameraInfo().getZoomState().getValue();
+                    if (st != null && Math.abs(st.getZoomRatio() - target) < 0.05f) {
+                        return;
+                    }
+                    cam.getCameraControl().setZoomRatio(target);
+                    ScanFileLog.log("zoom applied " + target);
+                });
+            }
             // DPM 模式提高帧处理率：刻印码识别依赖多帧概率累积，200ms 节流（5fps）不足；
             // 文本级跨帧确认需 2 次命中，节流间隔直接决定确认延迟下限
             int intervalMs = dpmMode ? Math.min(80, config.getFrameIntervalMs()) : config.getFrameIntervalMs();
