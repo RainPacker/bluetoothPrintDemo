@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.graphics.RectF;
 import android.media.AudioManager;
 import android.media.ToneGenerator;
 import android.net.Uri;
@@ -118,6 +119,21 @@ public class ScanCameraActivity extends AppCompatActivity {
     private android.app.Dialog albumProgressDialog;
     // 相册识别进行中：期间丢弃相机解码回调（双保险），防止暂停前排队的帧误触发
     private boolean albumRecognizing = false;
+    // 相册识别兜底超时：DPM 大图全管线（ROI 三档放大 + 多尺度）在中端机上可达
+    // 数秒~数十秒，解码线程异常/极端卡顿时进度框也不允许永久滞留
+    private static final long ALBUM_DECODE_TIMEOUT_MS = 20_000;
+    private final Runnable albumTimeoutRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!albumRecognizing || finished) {
+                return;
+            }
+            albumRecognizing = false;
+            dismissAlbumProgress();
+            Toast.makeText(ScanCameraActivity.this, "识别超时，请重试", Toast.LENGTH_SHORT).show();
+            resumeAfterAlbum();
+        }
+    };
 
     /**
      * 微信式周期自动对焦：连续对焦（CONTINUOUS_PICTURE）在金属刻印等低对比度表面
@@ -164,9 +180,6 @@ public class ScanCameraActivity extends AppCompatActivity {
     private long timeoutMillis;
     private boolean finished = false;
     private long lastResultTime;
-    /** 帧间一致性验证：待确认文本（同文本跨帧出现 2 次才确认输出，防单帧误读） */
-    private String validatedText;
-    private long validatedFirstTime;
 
     private final Runnable timeoutRunnable = this::finishWithCancel;
     private final ActivityResultLauncher<Intent> albumLauncher =
@@ -356,8 +369,9 @@ public class ScanCameraActivity extends AppCompatActivity {
             cameraExecutor = Executors.newSingleThreadExecutor();
             final ScanPluginConfig config = pendingConfig != null ? pendingConfig : new ScanPluginConfig();
             DecodeEngine decodeEngine = new DecodeEngine(dpmMode, config.getFormats());
-            // DPM 模式提高帧处理率：刻印码识别依赖多帧概率累积，200ms 节流（5fps）不足
-            int intervalMs = dpmMode ? Math.min(120, config.getFrameIntervalMs()) : config.getFrameIntervalMs();
+            // DPM 模式提高帧处理率：刻印码识别依赖多帧概率累积，200ms 节流（5fps）不足；
+            // 文本级跨帧确认需 2 次命中，节流间隔直接决定确认延迟下限
+            int intervalMs = dpmMode ? Math.min(80, config.getFrameIntervalMs()) : config.getFrameIntervalMs();
             analyzer = new DpmImageAnalyzer(decodeEngine, intervalMs,
                     result -> mainHandler.post(() -> onDecodeResult(result)));
         }
@@ -389,11 +403,14 @@ public class ScanCameraActivity extends AppCompatActivity {
             Preview preview = previewBuilder.build();
             preview.setSurfaceProvider(previewView.getSurfaceProvider());
 
-            // 高分辨率分析流（小尺寸 DM 码需要更高模块分辨率）
+            // 分析流分辨率：
+            // - DPM 模式 4:3 1600x1200：传感器视场完整（16:9 会裁切上下视野）、
+            //   单位像素进光更多，小点距刻印码模块像素更大；
+            // - 普通 QR 用 16:9 1080p：视野更宽（微信同款），/2 降采样后检测足够
             ImageAnalysis.Builder analysisBuilder = new ImageAnalysis.Builder()
                     .setResolutionSelector(new androidx.camera.core.resolutionselector.ResolutionSelector.Builder()
                             .setResolutionStrategy(new androidx.camera.core.resolutionselector.ResolutionStrategy(
-                                    new Size(1920, 1080),
+                                    dpmMode ? new Size(1600, 1200) : new Size(1920, 1080),
                                     androidx.camera.core.resolutionselector.ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER))
                             .build())
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST);
@@ -410,7 +427,36 @@ public class ScanCameraActivity extends AppCompatActivity {
             cameraProvider.unbindAll();
             camera = cameraProvider.bindToLifecycle(this, selector, preview, imageAnalysis);
             camera.getCameraControl().enableTorch(torchOn);
+            // DPM 刻印码金属高光抑制：AE 在金属高光场景易过曝，
+            // 凹坑"黑环+白心"结构被冲成白斑后图像信息不可恢复（fillHoles 也救不回）。
+            // 轻微负曝光补偿压高光（约 -0.5EV），无补光灯时才启用（开灯时曝光已足够低）。
+            // 部分平板 HAL 不支持曝光补偿（isExposureCompensationSupported=false），跳过即可
+            if (dpmMode && !torchOn) {
+                try {
+                    androidx.camera.core.ExposureState es = camera.getCameraInfo().getExposureState();
+                    if (es.isExposureCompensationSupported()) {
+                        int idx = es.getExposureCompensationRange().clamp(-3);
+                        camera.getCameraControl().setExposureCompensationIndex(idx);
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "set exposure compensation failed", e);
+                }
+            }
             startAutoFocus();
+            // 取景框 ROI：只识别框内区域。取景框就绪（onSizeChanged）或摄像头
+            // 重新绑定时推送给分析器；布局可能已完成，立即补推一次
+            overlayView.setFrameReadyListener(rect -> {
+                if (analyzer != null) {
+                    analyzer.setRoiViewRect(rect.left, rect.top, rect.right, rect.bottom,
+                            overlayView.getWidth(), overlayView.getHeight());
+                }
+            });
+            RectF readyFrame = overlayView.getFrameRect();
+            if (!readyFrame.isEmpty() && analyzer != null) {
+                analyzer.setRoiViewRect(readyFrame.left, readyFrame.top,
+                        readyFrame.right, readyFrame.bottom,
+                        overlayView.getWidth(), overlayView.getHeight());
+            }
         } catch (Exception e) {
             Log.e(TAG, "bindCamera failed", e);
             // 翻转到不支持的摄像头时回退后摄，首次绑定失败才报错退出
@@ -523,8 +569,15 @@ public class ScanCameraActivity extends AppCompatActivity {
                 // 暂停超时计时，避免识别中被超时关页；识别失败后重新计时
                 mainHandler.removeCallbacks(timeoutRunnable);
                 showAlbumProgress();
+                // 兜底超时与正常回调互斥收尾（谁先到谁处理，晚到方直接丢弃）
+                mainHandler.removeCallbacks(albumTimeoutRunnable);
+                mainHandler.postDelayed(albumTimeoutRunnable, ALBUM_DECODE_TIMEOUT_MS);
                 analyzer.decodeBitmap(finalBitmap, result ->
                         mainHandler.post(() -> {
+                            mainHandler.removeCallbacks(albumTimeoutRunnable);
+                            if (!albumRecognizing) {
+                                return; // 已超时收尾，晚到的解码结果丢弃
+                            }
                             dismissAlbumProgress();
                             albumRecognizing = false;
                             if (result == null) {
@@ -638,25 +691,17 @@ public class ScanCameraActivity extends AppCompatActivity {
         if (text == null || text.isEmpty()) {
             return;
         }
-        long now = System.currentTimeMillis();
-        // ===== 帧间一致性验证 =====
-        if (!text.equals(validatedText)) {
-            // 与上次待确认文本不同：本帧结果进入待确认状态（首帧不输出）
-            validatedText = text;
-            validatedFirstTime = now;
-            Log.d(TAG, "result pending validation: " + text);
-            return;
-        }
-        // 同文本跨帧再次出现 → 可重复 → 确认（真值唯一，误读内容各异难以重复）
-        validatedText = null;
-        validatedFirstTime = 0;
-        Log.i(TAG, "result validated: " + text);
+        // 引擎已按格式分级确认（DecodeEngine）：
+        // - QR/PDF417/一维码：ECC 强、误读率极低，单帧直出；
+        // - DATA_MATRIX：尺度锁定跨帧确认（同文本须在同一降采样尺度下命中 2 次，
+        //   不同尺度上的系统性误读互不累积，杜绝"重复扫描结果不一样"）。
+        // 相册单次识别走 deliverResult，不经此路径
         deliverResult(result);
     }
 
     /**
      * 结果输出（连续模式防抖 + 成功反馈 + 回调 + 页面关闭/连续暂停）：
-     * 相机识别（跨帧验证通过后）与相册识别（单次直接调用）共用
+     * 相机识别（引擎确认通过后）与相册识别（单次直接调用）共用
      */
     private void deliverResult(Result result) {
         String text = result.getText();
@@ -758,6 +803,7 @@ public class ScanCameraActivity extends AppCompatActivity {
         stopAutoFocus();
         dismissAlbumProgress();
         mainHandler.removeCallbacks(timeoutRunnable);
+        mainHandler.removeCallbacks(albumTimeoutRunnable);
         if (activeInstance == this) {
             activeInstance = null;
         }

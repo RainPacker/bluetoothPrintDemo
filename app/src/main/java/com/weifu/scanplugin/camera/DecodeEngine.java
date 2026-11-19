@@ -39,10 +39,134 @@ class DecodeEngine {
     private int lastSuccessScale = -1;
     // 圆点命中链并行解码池（惰性创建，release 时关闭）
     private java.util.concurrent.ExecutorService dotDecodePool;
+    // 相机 DM 跨帧确认计数：key = 文本#尺度标签，value = 命中次数（仅解码线程访问）
+    // 同一文本须在同一降采样尺度下命中 ≥2 次才对外输出——不同尺度上的
+    // 系统性误读互不累积，从机制上杜绝"重复扫描结果不一样"
+    private final java.util.HashMap<String, int[]> dmHitCounts = new java.util.HashMap<>();
+    // DM 确认门槛 3 次：DotPeen 码模块噪声大，误读乱码文本偶发重复（同角度同光照
+    // 系统性误读），2 次即输出导致"同一码多次扫描结果不一致"；3 次下真文本
+    // 仅多等一帧（cpp1+g1 同帧双命中已占 2 次，日志实测），乱码需凑 3 次
+    // （跨层一致罕见 / 连续 3 帧同乱码）输出概率大幅下降
+    private static final int DM_CONFIRM_HITS = 3;
+    // 已出码文本 → 上次对外输出时间（连续模式同码去重窗口）
+    private final java.util.HashMap<String, Long> deliveredAt = new java.util.HashMap<>();
+    private static final long DELIVER_DEDUPE_MS = 2500;
+    private boolean dimsLogged = false;
+    private boolean roiLogged = false;
 
     DecodeEngine(boolean dpmMode, Set<String> formats) {
         this.dpmMode = dpmMode;
         this.formats = formats;
+    }
+
+    /**
+     * 矩形区域裁剪（row-major 灰度图）：取景框 ROI 专用。
+     */
+    private static byte[] cropRegion(byte[] gray, int width, int height, int x0, int y0, int cw, int ch) {
+        byte[] out = new byte[cw * ch];
+        for (int y = 0; y < ch; y++) {
+            System.arraycopy(gray, (y0 + y) * width + x0, out, y * cw, cw);
+        }
+        return out;
+    }
+
+    /**
+     * 粗估画面中点阵码的点距（像素）：
+     * 缩到宽 ≤480 → 自适应二值化 → 逐行统计黑游程长度，中位数 ≈ 点直径
+     * （击打圆点直径约为点距 0.8）→ /0.8 ≈ 点距。
+     * 无显著游程（虚焦/无码/纯噪）返回 -1。
+     */
+    private int estimatePitch(byte[] gray, int width, int height) {
+        try {
+            int factor = Math.max(1, width / 480);
+            int w = width / factor, h = height / factor;
+            if (w < 100 || h < 100) {
+                return -1;
+            }
+            byte[] img = ImagePreprocessor.downscale(gray, width, height, factor);
+            ImagePreprocessor.adaptiveThreshold(img, w, h);
+            java.util.ArrayList<Integer> runs = new java.util.ArrayList<>();
+            for (int y = 0; y < h; y += 2) {
+                int run = 0;
+                for (int x = 0; x < w; x++) {
+                    if ((img[y * w + x] & 0xFF) == 0) {
+                        run++;
+                    } else {
+                        if (run >= 2 && run <= 60) {
+                            runs.add(run);
+                        }
+                        run = 0;
+                    }
+                }
+                if (run >= 2 && run <= 60) {
+                    runs.add(run);
+                }
+            }
+            if (runs.size() < 20) {
+                return -1;
+            }
+            java.util.Collections.sort(runs);
+            int median = runs.get(runs.size() / 2);
+            if (median < 3) {
+                return -1;
+            }
+            return Math.round(median / 0.8f);
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    /**
+     * 相机帧 DM 结果确认：同一文本命中 DM_CONFIRM_HITS 次才返回结果，
+     * 否则返回 null（本帧不输出，等下帧再命中）。确认后移除计数，允许同一码再次扫描。
+     * <p>
+     * 按文本聚合（不区分尺度标签）：级联辅助尺度逐帧轮转 {4,5,6,8,10}，低帧率下
+     * "同文本+同一尺度"命中 2 次的窗口可能永远凑不齐（真机 DotPeen 码超时识别失败的
+     * 元凶之一）。不同尺度的独立命中同样互证正确性——系统性误读一般稳定复现同一
+     * 错误文本，与真值文本不聚合；文本级聚合仍能防误读。
+     * 仅解码线程调用（decodeYuv 单线程串行），无并发问题。
+     */
+    private Result confirmCameraResult(Result r, String scaleTag) {
+        if (r == null) {
+            return null;
+        }
+        String text = r.getText();
+        if (text == null || text.isEmpty()) {
+            return null;
+        }
+        String key = text;
+        // "f"（全分辨率 ROI 粗二值化）垃圾误读率高（真机实测产出 "88"/"07132546"），
+        // 确认门槛提高一档
+        int need = scaleTag.startsWith("f") ? DM_CONFIRM_HITS + 1 : DM_CONFIRM_HITS;
+        int[] cnt = dmHitCounts.get(key);
+        if (cnt == null) {
+            if (dmHitCounts.size() > 48) {
+                dmHitCounts.clear(); // 防膨胀
+            }
+            dmHitCounts.put(key, new int[]{1});
+            Log.d(TAG, "dm pending confirm [" + scaleTag + "]: " + text);
+            ScanFileLog.log("dm pending [" + scaleTag + "]: " + text);
+            return null;
+        }
+        cnt[0]++;
+        if (cnt[0] >= need) {
+            dmHitCounts.remove(key);
+            // 已出码文本 2.5s 去重：确认后计数已清零，持续对准同一码会每 2 帧
+            // 重新凑满确认 → 连续模式下同一码反复对外输出（真机"重复扫描"）
+            long now = android.os.SystemClock.elapsedRealtime();
+            Long last = deliveredAt.get(text);
+            if (last != null && now - last < DELIVER_DEDUPE_MS) {
+                return null;
+            }
+            if (deliveredAt.size() > 32) {
+                deliveredAt.clear();
+            }
+            deliveredAt.put(text, now);
+            Log.i(TAG, "dm confirmed [" + scaleTag + "]: " + text);
+            ScanFileLog.log("dm confirmed [" + scaleTag + "]: " + text);
+            return r;
+        }
+        return null;
     }
 
     /**
@@ -56,6 +180,14 @@ class DecodeEngine {
      * @return 解码结果，失败返回 null
      */
     Result decodeYuv(byte[] yPlane, int width, int height, int rowStride, int rotationDegrees) {
+        return decodeYuv(yPlane, width, height, rowStride, rotationDegrees, null);
+    }
+
+    /**
+     * @param roi 取景框像素 rect {x0, y0, w, h}（旋转矫正后的竖屏显示坐标），null=全图。
+     *            只识别框内区域：管线耗时按裁剪面积近似线性下降，框外噪声不进解码
+     */
+    Result decodeYuv(byte[] yPlane, int width, int height, int rowStride, int rotationDegrees, int[] roi) {
         setHints();
         // 提取紧凑灰度图（去除行跨距）
         byte[] gray = extractGray(yPlane, width, height, rowStride);
@@ -69,23 +201,34 @@ class DecodeEngine {
             }
         }
 
-        // ===== 第 1 层：zxing-cpp 主引擎（降采样图，大码快扫）=====
-        // C++ 检测器/解码器对模糊、低对比、倾斜一维码、DM 的识别率数倍于 Java 版；
-        // tryRotate/tryInvert 内置全方向全极性重试，无需 Java 侧级联
-        int factor = width > 640 ? 3 : 1;
-        byte[] small = ImagePreprocessor.downscale(gray, width, height, factor);
-        int sw = width / factor;
-        int sh = height / factor;
-        Result result = cppDecode(grayToBitmap(small, sw, sh), cppReader);
-        if (result != null) {
-            return result;
+        if (!dimsLogged) {
+            dimsLogged = true;
+            String dims = "camera frame " + width + "x" + height + " dpm=" + dpmMode + " formats=" + formats;
+            Log.i(TAG, dims);
+            ScanFileLog.log(dims);
         }
 
-        // ===== 第 2 层：zxing-cpp 全分辨率（小尺寸码保细节）=====
-        if (factor > 1) {
-            result = cppDecode(grayToBitmap(gray, width, height), cppReader);
-            if (result != null) {
+        // ===== 第 1 层：zxing-cpp 主引擎（全分辨率）=====
+        // 真机日志验证（小米 1200x1600 帧）：全分辨率 cpp1/g1 是 DotPeen DM 的
+        // 命中层（c1 pending → 同帧 g1 confirmed，30ms 聚合出码）；cpp 全分辨率
+        // 1.9MP 仅 40~75ms，QR 首帧即中，秒级体验不受影响。
+        // 保持全帧不裁 ROI：特写拍摄（码占画面 >框，如 DotPeen 测试图贴拍）时
+        // 取景框 ROI 只覆盖码的中部，L 型定位边被裁掉 → cpp 必然定位失败
+        // （真机"特写无法识别"回归实证）。cpp 层 40~75ms 本就不是瓶颈，
+        // ROI 收益集中在慢层级联
+        long t0 = android.os.SystemClock.elapsedRealtime();
+        Result result = cppDecode(grayToBitmap(gray, width, height), cppReader);
+        long t1 = android.os.SystemClock.elapsedRealtime();
+        Log.d(TAG, "cpp1 " + (t1 - t0) + "ms hit=" + (result != null));
+        ScanFileLog.log("cpp1 " + (t1 - t0) + "ms hit=" + (result != null));
+        if (result != null) {
+            // 高置信度格式直出；DM 走文本级跨帧确认（未确认时继续后续层级）
+            if (result.getBarcodeFormat() != com.google.zxing.BarcodeFormat.DATA_MATRIX) {
                 return result;
+            }
+            Result confirmed = confirmCameraResult(result, "c1");
+            if (confirmed != null) {
+                return confirmed;
             }
         }
 
@@ -93,30 +236,72 @@ class DecodeEngine {
             return null;
         }
 
-        // ===== 第 2.5 层：全局直方图二值化兜底（圆点 DM 专项）=====
+        // ===== 第 2 层：全局直方图二值化兜底（圆点 DM 专项，全分辨率）=====
         // DotPeen 圆点码的模块是孤立圆点，局部均值二值化（LOCAL_AVERAGE）在点间隙处
-        // 易产生误判；GLOBAL_HISTOGRAM 按全图灰度分布取阈值，对圆点边缘响应不同，
-        // 与第 1/2 层互补
-        result = cppDecode(grayToBitmap(small, sw, sh), cppReaderGlobal);
+        // 易产生误判；GLOBAL_HISTOGRAM 按全图灰度分布取阈值，对圆点边缘响应不同
+        result = cppDecode(grayToBitmap(gray, width, height), cppReaderGlobal);
         if (result != null) {
-            return result;
-        }
-        if (factor > 1) {
-            result = cppDecode(grayToBitmap(gray, width, height), cppReaderGlobal);
-            if (result != null) {
+            if (result.getBarcodeFormat() != com.google.zxing.BarcodeFormat.DATA_MATRIX) {
                 return result;
+            }
+            Result confirmed = confirmCameraResult(result, "g1");
+            if (confirmed != null) {
+                return confirmed;
             }
         }
 
-        // ===== 第 3 层：Java DPM 兜底管线（多尺度时间复用）=====
-        // 相册快/相机慢的差异根源：相册 397px 图 /2 后点距恰落 9~10px 甜蜜区，
-        // 而 1080p 相机帧同取景点距可达 ~90px，/2、/3 全部落到甜蜜区外，
-        // 需要 /8~10 才能进入。策略：
-        // 3.0 命中尺度记忆：上帧曾在某辅尺度解码成功（待跨帧确认），本帧优先
-        //     复跑同尺度 → 第二帧立即再次命中，快速通过验证出码
-        // 3.1 主尺度 /3、/2 逐帧交替全管线（近距离/小码场景）
-        // 3.2 辅尺度 {4,5,6,8,10} 逐帧轮转，只跑并行命中链 + C++ 兜底
-        //     （高倍降采样像素量小，代价几十 ms；多帧累积覆盖全尺度带）
+        // ===== 取景框 ROI 裁剪（竖屏显示帧坐标，与 UI 取景框同参照系）=====
+        // 只作用于慢层（级联/pitchEst/ROI 放大，耗时大头）：中距离拍摄（码在框内）
+        // 时按裁剪面积近似线性提速 4~6 倍，框外噪声不进级联（乱码误读来源减少）。
+        // cpp1/g1 快速命中层保持全帧：特写大码（码 >框）时 ROI 会裁掉 L 型定位边；
+        // 且码在框外时 cpp 层仍可识别（用户未对准框的场景）
+        if (roi != null && roi.length == 4) {
+            int x0 = Math.max(0, Math.min(width - 32, roi[0]));
+            int y0 = Math.max(0, Math.min(height - 32, roi[1]));
+            int cw = Math.min(roi[2], width - x0);
+            int ch = Math.min(roi[3], height - y0);
+            // 面积超过全图 3/4 时裁剪无收益；短边 <96px 点距/视场不足，退回全图
+            if (cw >= 96 && ch >= 96 && (long) cw * ch < (long) width * height * 3 / 4) {
+                gray = cropRegion(gray, width, height, x0, y0, cw, ch);
+                width = cw;
+                height = ch;
+                if (!roiLogged) {
+                    roiLogged = true;
+                    String roiLog = "decodeRoi " + x0 + "," + y0 + " " + cw + "x" + ch;
+                    Log.i(TAG, roiLog);
+                    ScanFileLog.log(roiLog);
+                }
+            }
+        }
+
+        // ===== 第 3 层：Java DPM 兜底级联（/2 小图）=====
+        // factor 必须按长边判定：竖屏帧 width=1200/1080，按宽度判定会失效退化为
+        // 全分辨率——全分辨率主管线单帧 1~4s 是真机级联延迟的元凶（日志验证）；
+        // 且全分辨率 dot chains 对 DotPeen 码只产出 8 位乱码误读，/2 后点距
+        // 落入 (win,C) 参数族工作区间且提速 4 倍
+        int factor = Math.max(width, height) > 1000 ? 2 : 1;
+        byte[] small = ImagePreprocessor.downscale(gray, width, height, factor);
+        long t3 = android.os.SystemClock.elapsedRealtime();
+        result = decodeCascade(gray, width, height, small, width / factor, height / factor, factor);
+        String cascadeLog = "cascade " + (android.os.SystemClock.elapsedRealtime() - t3) + "ms hit=" + (result != null);
+        Log.d(TAG, cascadeLog);
+        ScanFileLog.log(cascadeLog);
+        return result;
+    }
+
+    /**
+     * 第 3 层 Java DPM 兜底级联（多尺度时间复用）：
+     * 相册快/相机慢的差异根源：相册 397px 图 /2 后点距恰落 9~10px 甜蜜区，
+     * 而 1080p 相机帧同取景点距可达 ~90px，/2、/3 全部落到甜蜜区外，
+     * 需要 /8~10 才能进入。策略：
+     * 3.0 命中尺度记忆：上帧曾在某辅尺度解码成功（待跨帧确认），本帧优先
+     *     复跑同尺度 → 第二帧立即再次命中，快速通过验证出码
+     * 3.1 主尺度 /2 全管线（近距离/小码场景，点距更大保细节）
+     * 3.2 辅尺度 {4,5,6,8,10} 逐帧轮转，只跑并行命中链 + C++ 兜底
+     *     （高倍降采样像素量小，代价几十 ms；多帧累积覆盖全尺度带）
+     */
+    private Result decodeCascade(byte[] gray, int width, int height, byte[] small, int sw, int sh, int factor) {
+        Result result;
         frameCounter++;
         if (lastSuccessScale >= 2
                 && width / lastSuccessScale >= 120 && height / lastSuccessScale >= 120) {
@@ -127,24 +312,81 @@ class DecodeEngine {
                 result = cppDotProbe(img, width / s, height / s);
             }
             if (result != null) {
-                return result;
+                // 标签与辅尺度轮转一致（a+尺度）：首帧命中后，下帧记忆探针
+                // 复跑同尺度即可凑满确认次数，快速出码
+                return confirmCameraResult(result, "a" + s);
             }
         }
 
         byte[] workImg = small;
         int workW = sw, workH = sh;
-        if (factor > 2 && (frameCounter & 1) == 0) {
-            workImg = ImagePreprocessor.downscale(gray, width, height, 2);
-            workW = width / 2;
-            workH = height / 2;
-        }
-        result = decodeGrayDpm(workImg, workW, workH, true);
+        // 主尺度为 /2 图（decodeYuv 传入）：小码保细节且点距落入 (win,C) 参数族工作区间，
+        // 全分辨率 dot chains 实测只产出乱码误读且单帧 1~4s
+        ScanFileLog.log("main=/" + factor + " " + workW + "x" + workH
+                + " roiPhase=" + (frameCounter % 3));
+        result = decodeGrayDpm(workImg, workW, workH, true, frameCounter % 3);
         if (result != null) {
-            return result;
+            return confirmCameraResult(result, "m" + factor);
         }
 
-        int[] auxScales = {4, 5, 6, 8, 10};
-        int aux = auxScales[frameCounter % auxScales.length];
+        int pitchEst = estimatePitch(gray, width, height);
+        ScanFileLog.log("pitchEst=" + pitchEst);
+
+        if (pitchEst > 0 && pitchEst <= 11) {
+            // 小点距（真机实测 4~6px：码占屏仅 ~7%，1440 宽帧中码约 100px）：
+            // 任何降采样都让点距跌破甜蜜区，方向完全反了——正确做法是
+            // 中心裁剪 + 放大，把点距推入 9~10px 甜蜜区后跑验证过的命中链。
+            // scale 允许 1：pitchEst≥7 时点距已接近甜蜜区，强行 x2 会推到
+            // 14px+ 反而错过（真机日志 pitchEst=8 x2 crop=0.6 全败实证）
+            int scale = Math.max(1, Math.min(4, Math.round(9.5f / pitchEst)));
+            // ROI 裁剪后码占框内比例高（30~70%），中心裁剪比率不能沿用全帧
+            // 时代的 0.25/0.6（按"码占屏 7%"设计）——否则码被截碎（真机日志
+            // pitchEst=5 x2 crop=0.25 只剩 174px 中心区，L 型定位边必被裁掉）。
+            // 起步取全 ROI，像素预算不足时由下方循环自动收缩（点距甜蜜区
+            // 由 scale 保证，不受收缩影响）
+            float ratio = 1.0f;
+            // 放大输出像素预算 ≤~1.2MP：2.76MP（1440x1920）上 fillHoles/闭运算单次
+            // 数百 ms，并行命中链必超 300ms 时限、cppDotProbe 秒级——真机单帧
+            // cascade 3.8s 的元凶（日志验证）。裁剪比率按预算收缩，缩放倍率
+            // （点距甜蜜区）保持不变
+            int cw = Math.round(width * ratio);
+            int ch = Math.round(height * ratio);
+            while (scale > 2 && (long) cw * scale * ch * scale > 1_200_000L) {
+                scale--;
+            }
+            while (ratio > 0.2f && (long) cw * scale * ch * scale > 1_200_000L) {
+                ratio -= 0.05f;
+                cw = Math.round(width * ratio);
+                ch = Math.round(height * ratio);
+            }
+            Object[] up = ImagePreprocessor.cropAndScale(gray, width, height, ratio, ratio, scale);
+            byte[] upImg = (byte[]) up[0];
+            int upW = (int) up[1];
+            int upH = (int) up[2];
+            ScanFileLog.log("upscale x" + scale + " crop=" + ratio + " " + upW + "x" + upH);
+            result = decodeDotChainsParallel(upImg, upW, upH);
+            if (result == null) {
+                result = cppDotProbe(upImg, upW, upH);
+            }
+            if (result != null) {
+                return confirmCameraResult(result, "u" + scale);
+            }
+            // 小点距帧跑降采样管线是纯浪费，直接等下一帧
+            return null;
+        }
+
+        int aux;
+        if (pitchEst >= 12) {
+            // 大点距：按估计值直选降采样尺度（pitch/9.5 ≈ 目标倍数）
+            aux = Math.max(2, Math.min(16, Math.round(pitchEst / 9.5f)));
+            if (width / aux < 120 || height / aux < 120) {
+                aux = 2;
+            }
+        } else {
+            int[] auxScales = {4, 5, 6, 8, 10};
+            aux = auxScales[frameCounter % auxScales.length];
+        }
+        ScanFileLog.log("aux=/" + aux);
         if (aux != lastSuccessScale && width / aux >= 120 && height / aux >= 120) {
             byte[] img = ImagePreprocessor.downscale(gray, width, height, aux);
             result = decodeDotChainsParallel(img, width / aux, height / aux);
@@ -152,11 +394,17 @@ class DecodeEngine {
                 result = cppDotProbe(img, width / aux, height / aux);
             }
             if (result != null) {
+                // 记住命中尺度（即使尚未确认）：下帧记忆探针复跑同尺度凑满确认
                 lastSuccessScale = aux;
-                return result;
+                return confirmCameraResult(result, "a" + aux);
             }
         }
-        return decodeFullResRoi(gray, width, height);
+        // fullResRoi：2.76MP 多趟解码（真机实测为级联 2s 的主要构成之一），
+        // 每 3 帧跑一次，其余帧跳过（省下的时间让有效帧率翻倍）
+        if (frameCounter % 3 == 0) {
+            return confirmCameraResult(decodeFullResRoi(gray, width, height), "f");
+        }
+        return null;
     }
 
     /**
@@ -291,16 +539,31 @@ class DecodeEngine {
         return new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1);
     }
 
+    // cppDecode 专用可复用 Bitmap/像素缓冲（仅解码线程访问，无并发）：
+    // 每帧 4~6 次 grayToBitmap，2MP 帧每次分配 ~8MB，频繁分配引发 GC 卡顿
+    // （真机识别慢的成因之一），复用后分配归零
+    private Bitmap reuseBitmap;
+    private int[] reusePixels;
+    private int reuseW = -1, reuseH = -1;
+
     /**
-     * 灰度 byte[] → ARGB Bitmap（zxing-cpp Bitmap 接口输入）
+     * 灰度 byte[] → ARGB Bitmap（zxing-cpp Bitmap 接口输入，缓冲复用）
      */
-    private static Bitmap grayToBitmap(byte[] gray, int width, int height) {
-        int[] pixels = new int[gray.length];
-        for (int i = 0; i < gray.length; i++) {
+    private Bitmap grayToBitmap(byte[] gray, int width, int height) {
+        int n = width * height;
+        if (reuseBitmap == null || reuseW != width || reuseH != height) {
+            reusePixels = new int[n];
+            reuseBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            reuseW = width;
+            reuseH = height;
+        }
+        int[] pixels = reusePixels;
+        for (int i = 0; i < n; i++) {
             int v = gray[i] & 0xFF;
             pixels[i] = 0xFF000000 | (v << 16) | (v << 8) | v;
         }
-        return Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888);
+        reuseBitmap.setPixels(pixels, 0, width, 0, 0, width, height);
+        return reuseBitmap;
     }
 
     /**
@@ -379,10 +642,13 @@ class DecodeEngine {
         if (!dpmMode) {
             return null;
         }
-        Result r = decodeGrayDpm(gray, w, h);
-        if (r != null) {
-            return r;
-        }
+        // 收集模式（相册单次解码）：全部变体的命中汇总后做文本多数派投票。
+        // RS 纠错在模块错误数超容量时可能"假成功"（syndromes 自洽但内容错误），
+        // 且不同预处理变体的误读文本互不相同——首个命中直接输出会随机选中
+        // 错文本（真机"解码结果与真实内容不对应"）。真值会被多数变体共同读出
+        // → 多数派稳定选中真文本；无多数派宁可不输出（报未识别），绝不输出错文本
+        java.util.List<Result> hits = new java.util.ArrayList<>();
+        decodeGrayDpm(gray, w, h, false, -1, hits);
         // 多尺度补充：相册大图（限 1600px）中圆点 DM 点距可能仍远大于解码甜蜜区
         // （点距/降采样后 ≈9~10px，实拍验证），依次补 /4、/8 档
         for (int f : new int[]{4, 8}) {
@@ -390,12 +656,45 @@ class DecodeEngine {
                 break;
             }
             byte[] s = ImagePreprocessor.downscale(gray, w, h, f);
-            r = decodeGrayDpm(s, w / f, h / f, true);
-            if (r != null) {
-                return r;
+            decodeGrayDpm(s, w / f, h / f, true, -1, hits);
+        }
+        return pickMajorityResult(hits);
+    }
+
+    /**
+     * 文本多数派投票：票数最高且严格过半者胜出（返回该文本的任一命中），
+     * 否则返回 null。单一命中 = 1/1 自然过半，原样输出维持可用性。
+     * DotPeen 码模块噪声大时不同变体可能各自"成功"读出不同文本（RS 假成功），
+     * 唯有多数派文本值得信任——真值会被不同预处理管线共同读出。
+     */
+    private static Result pickMajorityResult(java.util.List<Result> hits) {
+        if (hits == null || hits.isEmpty()) {
+            return null;
+        }
+        java.util.HashMap<String, Result> byText = new java.util.HashMap<>();
+        java.util.HashMap<String, Integer> votes = new java.util.HashMap<>();
+        int total = 0;
+        for (Result r : hits) {
+            String t = r.getText();
+            if (t == null || t.isEmpty()) {
+                continue;
+            }
+            byText.putIfAbsent(t, r);
+            votes.merge(t, 1, Integer::sum);
+            total++;
+        }
+        String bestText = null;
+        int bestCnt = 0;
+        for (java.util.Map.Entry<String, Integer> e : votes.entrySet()) {
+            if (e.getValue() > bestCnt) {
+                bestText = e.getKey();
+                bestCnt = e.getValue();
             }
         }
-        return null;
+        if (bestText != null && bestCnt * 2 > total) {
+            return byText.get(bestText);
+        }
+        return null; // 平票/无过半：不输出疑似错文本
     }
 
     /**
@@ -407,15 +706,28 @@ class DecodeEngine {
      * 5. 多级 ROI 放大（中心 50% 2x / 30% 3x，覆盖小尺寸 DM 码）
      */
     private Result decodeGrayDpm(byte[] gray, int width, int height) {
-        return decodeGrayDpm(gray, width, height, false);
+        return decodeGrayDpm(gray, width, height, false, -1, null);
     }
 
     /**
      * @param preDownscaled true=输入已是降采样图（如 decodeYuv 的 factor-3 图），
      *                      跳过内部 /2，避免二次降采样把圆点 DM 点距压到不可解码尺度；
      *                      false=原始大图（相册路径），保持内部 /2 降采样提速
+     * @param roiPhase      ROI 放大档位轮转相位：-1=三档全跑（相册单次，正确性优先）；
+     *                      >=0 时只跑一档（camera 帧轮转，2.76MP 放大解码单档数百 ms，
+     *                      原三档连跑是级联 2s 的主要构成之一）
      */
-    private Result decodeGrayDpm(byte[] gray, int width, int height, boolean preDownscaled) {
+    private Result decodeGrayDpm(byte[] gray, int width, int height, boolean preDownscaled, int roiPhase) {
+        return decodeGrayDpm(gray, width, height, preDownscaled, roiPhase, null);
+    }
+
+    /**
+     * @param collectList 非 null = 收集模式（相册单次解码）：全部变体的命中都加入
+     *                    列表并继续跑后续变体，不提前返回；调用方做多数派投票。
+     *                    null = 首中即返回（相机帧，低延迟优先）
+     */
+    private Result decodeGrayDpm(byte[] gray, int width, int height, boolean preDownscaled, int roiPhase,
+                                 java.util.List<Result> collectList) {
         int dw, dh;
         byte[] small;
         if (preDownscaled) {
@@ -435,110 +747,147 @@ class DecodeEngine {
         byte[] enhanced = small.clone();
         ImagePreprocessor.equalizeHistogram(enhanced);
         Result r = tryDecode(new GrayscaleSource(enhanced, dw, dh), true);
-        if (r != null) return r;
+        if (r != null) {
+            if (collectList != null) collectList.add(r); else return r;
+        }
 
         // 2. 均衡化 + 锐化：模块边界增强
         byte[] sharpened = enhanced.clone();
         ImagePreprocessor.sharpen(sharpened, dw, dh);
         r = tryDecode(new GrayscaleSource(sharpened, dw, dh), true);
-        if (r != null) return r;
+        if (r != null) {
+            if (collectList != null) collectList.add(r); else return r;
+        }
 
         // 3. 自适应二值化 + 形态学开运算去噪
         byte[] bin = enhanced.clone();
         ImagePreprocessor.adaptiveThreshold(bin, dw, dh);
         ImagePreprocessor.denoise(bin, dw, dh);
         r = tryDecode(new GrayscaleSource(bin, dw, dh), false);
-        if (r != null) return r;
+        if (r != null) {
+            if (collectList != null) collectList.add(r); else return r;
+        }
 
         // 4. 反色（暗底亮码，激光刻印白字）
         byte[] inv = bin.clone();
         ImagePreprocessor.invert(inv);
         r = tryDecode(new GrayscaleSource(inv, dw, dh), false);
-        if (r != null) return r;
+        if (r != null) {
+            if (collectList != null) collectList.add(r); else return r;
+        }
 
-        // 5. 四方向旋转（去噪二值图 + 锐化灰度图）
+        // 5. 旋转重试（去噪二值图 3 方向）：仅二值图旋转——
+        // 锐化灰度图的 3 次旋转解码（真机实测每帧 ~250ms）对识别率贡献极小，
+        // zxing-cpp 层 tryRotate 已覆盖旋转场景
         int[] degreesArr = {90, 180, 270};
         for (int deg : degreesArr) {
             byte[] rotatedBin = ImagePreprocessor.rotate(bin, dw, dh, deg);
             int rw = deg == 180 ? dw : dh;
             int rh = deg == 180 ? dh : dw;
             r = tryDecode(new GrayscaleSource(rotatedBin, rw, rh), false);
-            if (r != null) return r;
-        }
-        for (int deg : degreesArr) {
-            byte[] rotated = ImagePreprocessor.rotate(sharpened, dw, dh, deg);
-            int rw = deg == 180 ? dw : dh;
-            int rh = deg == 180 ? dh : dw;
-            r = tryDecode(new GrayscaleSource(rotated, rw, rh), true);
-            if (r != null) return r;
+            if (r != null) {
+                if (collectList != null) collectList.add(r); else return r;
+            }
         }
 
         // 5.5 圆点 DM（DotPeen）专项：
         // ① 实拍图参数扫描命中的成功链族【并行优先】（唯一命中组合）：
         //    原始灰度（无均衡化——均衡化会放大喷砂噪声对比度导致全败）
         //    + 低阈值 C=4/6 + fillHoles→denoise→close1/2，
-        //    4 组 (窗口,C) 参数独立管线线程池并发，任一成功立即返回；
+        //    4 组 (窗口,C) 参数独立管线线程池并发（内部已做多数派裁决）；
         // ② 命中参数的 zxing-cpp 兜底；
         // ③ 均衡化变体（未命中时的补充覆盖，串行）。
         // 注意：开运算去噪不能在 fillHoles 之前（会把"黑环+白心"的环形圆点一并抹掉）
         r = decodeDotChainsParallel(small, dw, dh);
-        if (r != null) return r;
+        if (r != null) {
+            if (collectList != null) collectList.add(r); else return r;
+        }
 
         // ② 命中参数链交 zxing-cpp（C++ DM 容错远强于 Java 版，tryInvert 已开启）
         r = cppDotProbe(small, dw, dh);
-        if (r != null) return r;
+        if (r != null) {
+            if (collectList != null) collectList.add(r); else return r;
+        }
 
-        // ③ 均衡化变体（未命中时补充覆盖，串行）
-        byte[] binRaw = enhanced.clone();
-        ImagePreprocessor.adaptiveThreshold(binRaw, dw, dh);
+        // ③ 均衡化变体（历史兼容覆盖）：相机帧隔帧执行——并行链+cppDotProbe 已覆盖
+        // 验证过的组合，这批变体每帧跑会把级联拖到 2s（真机实测）。
+        // 相册单次解码（roiPhase<0）必须全量执行：同一张图重复识别结果必须一致，
+        // 不能受相机流 frameCounter 相位影响（真机"同图多次扫描结果不一致"根因之一）
+        if (roiPhase < 0 || (frameCounter & 1) == 0) {
+            byte[] binRaw = enhanced.clone();
+            ImagePreprocessor.adaptiveThreshold(binRaw, dw, dh);
 
-        byte[] close1 = binRaw.clone();
-        ImagePreprocessor.closeMorph(close1, dw, dh);
-        r = tryDecodeBinWithInvert(close1, dw, dh);
-        if (r != null) return r;
+            byte[] close1 = binRaw.clone();
+            ImagePreprocessor.closeMorph(close1, dw, dh);
+            r = tryDecodeBinWithInvert(close1, dw, dh);
+            if (r != null) {
+                if (collectList != null) collectList.add(r); else return r;
+            }
 
-        byte[] close2 = binRaw.clone();
-        ImagePreprocessor.closeMorph(close2, dw, dh, 2);
-        r = tryDecodeBinWithInvert(close2, dw, dh);
-        if (r != null) return r;
+            byte[] close2 = binRaw.clone();
+            ImagePreprocessor.closeMorph(close2, dw, dh, 2);
+            r = tryDecodeBinWithInvert(close2, dw, dh);
+            if (r != null) {
+                if (collectList != null) collectList.add(r); else return r;
+            }
 
-        byte[] filled = binRaw.clone();
-        ImagePreprocessor.fillHoles(filled, dw, dh);
-        r = tryDecodeBinWithInvert(filled, dw, dh);
-        if (r != null) return r;
+            byte[] filled = binRaw.clone();
+            ImagePreprocessor.fillHoles(filled, dw, dh);
+            r = tryDecodeBinWithInvert(filled, dw, dh);
+            if (r != null) {
+                if (collectList != null) collectList.add(r); else return r;
+            }
+            ImagePreprocessor.closeMorph(filled, dw, dh, 2);
+            r = tryDecodeBinWithInvert(filled, dw, dh);
+            if (r != null) {
+                if (collectList != null) collectList.add(r); else return r;
+            }
 
-        byte[] filled2 = filled.clone();
-        ImagePreprocessor.closeMorph(filled2, dw, dh, 2);
-        r = tryDecodeBinWithInvert(filled2, dw, dh);
-        if (r != null) return r;
+            // 离线合成图测试验证的最优链（变体 22/23 均成功）：
+            // fillHoles（高光环点→实心盘，实心盘能扛住开运算）→ denoise（清背景散点）
+            // → 闭运算（弥合点间隙）。顺序不可颠倒：先去噪会把环形圆点一并抹掉
+            byte[] dotSolid = binRaw.clone();
+            ImagePreprocessor.fillHoles(dotSolid, dw, dh);
+            ImagePreprocessor.denoise(dotSolid, dw, dh);
+            r = tryDecodeBinWithInvert(dotSolid, dw, dh);
+            if (r != null) {
+                if (collectList != null) collectList.add(r); else return r;
+            }
+            ImagePreprocessor.closeMorph(dotSolid, dw, dh);
+            r = tryDecodeBinWithInvert(dotSolid, dw, dh);
+            if (r != null) {
+                if (collectList != null) collectList.add(r); else return r;
+            }
+            ImagePreprocessor.closeMorph(dotSolid, dw, dh);
+            r = tryDecodeBinWithInvert(dotSolid, dw, dh);
+            if (r != null) {
+                if (collectList != null) collectList.add(r); else return r;
+            }
 
-        // 离线合成图测试验证的最优链（变体 22/23 均成功）：
-        // fillHoles（高光环点→实心盘，实心盘能扛住开运算）→ denoise（清背景散点）
-        // → 闭运算（弥合点间隙）。顺序不可颠倒：先去噪会把环形圆点一并抹掉
-        byte[] dotSolid = binRaw.clone();
-        ImagePreprocessor.fillHoles(dotSolid, dw, dh);
-        ImagePreprocessor.denoise(dotSolid, dw, dh);
-        r = tryDecodeBinWithInvert(dotSolid, dw, dh);
-        if (r != null) return r;
-        ImagePreprocessor.closeMorph(dotSolid, dw, dh);
-        r = tryDecodeBinWithInvert(dotSolid, dw, dh);
-        if (r != null) return r;
-        ImagePreprocessor.closeMorph(dotSolid, dw, dh);
-        r = tryDecodeBinWithInvert(dotSolid, dw, dh);
-        if (r != null) return r;
+            // Java 引擎全部失败 → 把二值化成果交给 zxing-cpp
+            r = cppDecode(grayToBitmap(dotSolid, dw, dh), cppReaderGlobal);
+            if (r != null) {
+                if (collectList != null) collectList.add(r); else return r;
+            }
+            r = cppDecode(grayToBitmap(close2, dw, dh), cppReaderGlobal);
+            if (r != null) {
+                if (collectList != null) collectList.add(r); else return r;
+            }
+        }
 
-        // Java 引擎全部失败 → 把二值化成果交给 zxing-cpp
-        r = cppDecode(grayToBitmap(dotSolid, dw, dh), cppReaderGlobal);
-        if (r != null) return r;
-        r = cppDecode(grayToBitmap(close2, dw, dh), cppReaderGlobal);
-        if (r != null) return r;
-
-        // 6. 多级 ROI 放大（小尺寸 DM 码，原始分辨率）：中心 50% 2x → 30% 3x
-        r = decodeRoi(gray, width, height, 0.5f, 2);
-        if (r != null) return r;
-        r = decodeRoi(gray, width, height, 0.3f, 3);
-        if (r != null) return r;
-        return decodeRoi(gray, width, height, 0.4f, 2);
+        // 6. ROI 放大（小尺寸 DM 码）：三档轮转
+        // （放大解码单档数百 ms，相机帧每帧只跑一档由 roiPhase 轮转；
+        //   相册单次识别 roiPhase=-1 三档全跑，正确性优先）
+        if (roiPhase < 0) {
+            decodeRoi(gray, width, height, 0.5f, 2, collectList);
+            decodeRoi(gray, width, height, 0.3f, 3, collectList);
+            decodeRoi(gray, width, height, 0.4f, 2, collectList);
+            return null;
+        }
+        int idx = roiPhase % 3;
+        return decodeRoi(gray, width, height,
+                idx == 0 ? 0.5f : idx == 1 ? 0.3f : 0.4f,
+                idx == 1 ? 3 : 2, null);
     }
 
     /**
@@ -554,13 +903,23 @@ class DecodeEngine {
      * 单级 ROI：裁剪放大 → 灰度/二值/反色三路解码
      */
     private Result decodeRoi(byte[] gray, int width, int height, float ratio, int scale) {
+        return decodeRoi(gray, width, height, ratio, scale, null);
+    }
+
+    /**
+     * @param collectList 非 null = 收集模式（相册单次解码）：命中加入列表并继续
+     */
+    private Result decodeRoi(byte[] gray, int width, int height, float ratio, int scale,
+                             java.util.List<Result> collectList) {
         Object[] cropped = ImagePreprocessor.cropAndScale(gray, width, height, ratio, ratio, scale);
         @SuppressWarnings("unchecked")
         byte[] roi = (byte[]) cropped[0];
         int roiW = (int) cropped[1];
         int roiH = (int) cropped[2];
         Result r = tryDecode(new GrayscaleSource(roi, roiW, roiH), true);
-        if (r != null) return r;
+        if (r != null) {
+            if (collectList != null) collectList.add(r); else return r;
+        }
 
         byte[] roiBin = roi.clone();
         // 放大 scale 倍后模块间距同步放大，窗口需按倍数扩大，
@@ -568,12 +927,16 @@ class DecodeEngine {
         ImagePreprocessor.adaptiveThreshold(roiBin, roiW, roiH,
                 ImagePreprocessor.ADAPTIVE_WINDOW * scale, ImagePreprocessor.ADAPTIVE_C);
         r = tryDecode(new GrayscaleSource(roiBin, roiW, roiH), false);
-        if (r != null) return r;
+        if (r != null) {
+            if (collectList != null) collectList.add(r); else return r;
+        }
 
         byte[] roiInv = roiBin.clone();
         ImagePreprocessor.invert(roiInv);
         r = tryDecode(new GrayscaleSource(roiInv, roiW, roiH), false);
-        if (r != null) return r;
+        if (r != null) {
+            if (collectList != null) collectList.add(r); else return r;
+        }
 
         // 圆点 DM 兜底：填洞（高光坑底呈黑环+白心）→ 开运算去噪 → 闭运算弥合点间隙
         byte[] roiDot = roiBin.clone();
@@ -581,11 +944,17 @@ class DecodeEngine {
         ImagePreprocessor.denoise(roiDot, roiW, roiH);
         ImagePreprocessor.closeMorph(roiDot, roiW, roiH, 2);
         r = tryDecode(new GrayscaleSource(roiDot, roiW, roiH), false);
-        if (r != null) return r;
+        if (r != null) {
+            if (collectList != null) collectList.add(r); else return r;
+        }
 
         byte[] roiDotInv = roiDot.clone();
         ImagePreprocessor.invert(roiDotInv);
-        return tryDecode(new GrayscaleSource(roiDotInv, roiW, roiH), false);
+        r = tryDecode(new GrayscaleSource(roiDotInv, roiW, roiH), false);
+        if (r != null) {
+            if (collectList != null) collectList.add(r); else return r;
+        }
+        return null;
     }
 
     /**
@@ -606,7 +975,8 @@ class DecodeEngine {
 
     /**
      * 圆点 DM 命中链并行解码：4 组 (窗口,C) 参数各自独立管线，
-     * 线程池并发执行，任一成功立即返回（invokeAny 语义）。
+     * 线程池并发执行；收集时限内全部完成链的结果做文本多数派裁决
+     * （严格过半才输出，无多数派返回 null）。
      * 每条链使用局部 MultiFormatReader——共享 reader 非线程安全。
      */
     private Result decodeDotChainsParallel(byte[] gray, int width, int height) {
@@ -630,11 +1000,69 @@ class DecodeEngine {
         if (tasks.isEmpty()) {
             return null;
         }
-        try {
-            return dotDecodePool.invokeAny(tasks);
-        } catch (Exception e) {
-            return null; // 全部失败或被取消
+        // 收集全部在时限内完成的链结果 + 多数派裁决（invokeAny 竞速随机性的根治）：
+        // DotPeen 码模块噪声大时，多条 (win,C) 链可能各自"成功"读出不同文本
+        // （RS 纠错超容量时输出错误内容，不同二值化参数下错误模式不同），
+        // invokeAny 返回最先完成者——线程调度顺序随机 → 同一张图每次结果不一致。
+        // 改为：文本多数派（> 半数）才输出；无多数派返回 null（宁缺毋滥，
+        // 交 cppDotProbe/其他层/下帧重试），重复扫描结果稳定一致
+        java.util.concurrent.ExecutorCompletionService<Result> cs =
+                new java.util.concurrent.ExecutorCompletionService<>(dotDecodePool);
+        java.util.List<java.util.concurrent.Future<Result>> futures = new java.util.ArrayList<>();
+        for (java.util.concurrent.Callable<Result> t : tasks) {
+            futures.add(cs.submit(t));
         }
+        java.util.List<Result> hits = new java.util.ArrayList<>();
+        long deadline = android.os.SystemClock.elapsedRealtime() + 300;
+        int pending = futures.size();
+        try {
+            while (pending > 0) {
+                long remain = deadline - android.os.SystemClock.elapsedRealtime();
+                if (remain <= 0) {
+                    break; // 未完成链随超时取消，该尺度下帧轮转回来再试
+                }
+                java.util.concurrent.Future<Result> f =
+                        cs.poll(remain, java.util.concurrent.TimeUnit.MILLISECONDS);
+                if (f == null) {
+                    break;
+                }
+                pending--;
+                Result r = f.get();
+                if (r != null && r.getText() != null && !r.getText().isEmpty()) {
+                    hits.add(r);
+                }
+            }
+        } catch (Exception ignored) {
+            // 单链异常：继续等其余链
+        } finally {
+            for (java.util.concurrent.Future<Result> f : futures) {
+                f.cancel(true); // 中断未完成链，及时释放线程池
+            }
+        }
+        if (hits.isEmpty()) {
+            return null;
+        }
+        java.util.HashMap<String, Integer> votes = new java.util.HashMap<>();
+        for (Result r : hits) {
+            votes.merge(r.getText(), 1, Integer::sum);
+        }
+        String bestText = null;
+        int bestCnt = 0;
+        for (java.util.Map.Entry<String, Integer> e : votes.entrySet()) {
+            if (e.getValue() > bestCnt) {
+                bestText = e.getKey();
+                bestCnt = e.getValue();
+            }
+        }
+        // 多数派门槛：严格过半。链间互相印证才输出
+        if (bestText != null && bestCnt * 2 > hits.size()) {
+            for (Result r : hits) {
+                if (r.getText().equals(bestText)) {
+                    return r;
+                }
+            }
+        }
+        return null; // 无多数派：不输出随机乱码
     }
 
     /**
@@ -697,7 +1125,11 @@ class DecodeEngine {
 
     private Result tryOnce(MultiFormatReader r, BinaryBitmap bitmap) {
         try {
-            return r.decodeWithState(bitmap);
+            Result res = r.decodeWithState(bitmap);
+            if (res != null && res.getBarcodeFormat() == com.google.zxing.BarcodeFormat.DATA_MATRIX) {
+                res = fixJavaDmText(res);
+            }
+            return res;
         } catch (Exception e) {
             return null;
         }
@@ -731,12 +1163,49 @@ class DecodeEngine {
         try {
             BinaryBitmap bitmap = new BinaryBitmap(
                     hybrid ? new HybridBinarizer(source) : new GlobalHistogramBinarizer(source));
-            return reader.decodeWithState(bitmap);
+            Result r = reader.decodeWithState(bitmap);
+            if (r != null && r.getBarcodeFormat() == com.google.zxing.BarcodeFormat.DATA_MATRIX) {
+                r = fixJavaDmText(r);
+            }
+            return r;
         } catch (Exception e) {
             return null;
         } finally {
             reader.reset();
         }
+    }
+
+    /**
+     * Java zxing DM 解码文本字符集修正：
+     * Java DM 解码器把非 ASCII 字节按 Latin-1 直出（真机日志
+     * "ä½ å¥½ï¼ä¸çï¼" = "你好，世界！"的 UTF-8 字节），cpp 路径有
+     * extractText 智能解码而 Java 路径没有。含高位字符时按 Latin-1
+     * 还原字节流 → 严格 UTF-8 校验 → 通过则替换，失败原样返回。
+     */
+    private static Result fixJavaDmText(Result r) {
+        String text = r.getText();
+        if (text == null) {
+            return r;
+        }
+        boolean hasHigh = false;
+        for (int i = 0; i < text.length(); i++) {
+            if (text.charAt(i) > 0x7F) {
+                hasHigh = true;
+                break;
+            }
+        }
+        if (!hasHigh) {
+            return r;
+        }
+        try {
+            byte[] raw = text.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+            String utf8 = new String(raw, java.nio.charset.StandardCharsets.UTF_8);
+            if (!utf8.contains("\uFFFD")) {
+                return new Result(utf8, r.getRawBytes(), r.getResultPoints(), r.getBarcodeFormat());
+            }
+        } catch (Exception ignored) {
+        }
+        return r;
     }
 
     private void setHints() {

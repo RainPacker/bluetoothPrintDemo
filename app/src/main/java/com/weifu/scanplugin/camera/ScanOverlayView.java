@@ -30,6 +30,11 @@ public class ScanOverlayView extends View {
     private float cornerLength;
     private float cornerStroke;
     private long startTime;
+    /** 取景框就绪回调（onSizeChanged 计算完成后通知，避免调用方轮询布局） */
+    public interface OnFrameReadyListener {
+        void onFrameReady(RectF rect);
+    }
+    private OnFrameReadyListener frameReadyListener;
 
     public ScanOverlayView(Context context) {
         this(context, null);
@@ -54,6 +59,17 @@ public class ScanOverlayView extends View {
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
         computeFrame(w, h);
+        if (frameReadyListener != null && !frameRect.isEmpty()) {
+            frameReadyListener.onFrameReady(frameRect);
+        }
+    }
+
+    public void setFrameReadyListener(OnFrameReadyListener listener) {
+        this.frameReadyListener = listener;
+        // 布局可能已完成（onSizeChanged 已发生过）→ 立即补推一次
+        if (listener != null && !frameRect.isEmpty()) {
+            listener.onFrameReady(frameRect);
+        }
     }
 
     /**
