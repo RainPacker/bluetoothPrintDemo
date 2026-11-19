@@ -39,15 +39,17 @@ class DecodeEngine {
     private int lastSuccessScale = -1;
     // 圆点命中链并行解码池（惰性创建，release 时关闭）
     private java.util.concurrent.ExecutorService dotDecodePool;
-    // 相机 DM 跨帧确认计数：key = 文本#尺度标签，value = 命中次数（仅解码线程访问）
+    // 相机 DM 跨帧确认计数：key = 文本#尺度标签，value = {命中次数, 上次命中时间ms}（仅解码线程访问）
     // 同一文本须在同一降采样尺度下命中 ≥2 次才对外输出——不同尺度上的
     // 系统性误读互不累积，从机制上杜绝"重复扫描结果不一样"
-    private final java.util.HashMap<String, int[]> dmHitCounts = new java.util.HashMap<>();
+    private final java.util.HashMap<String, long[]> dmHitCounts = new java.util.HashMap<>();
     // DM 确认门槛 3 次：DotPeen 码模块噪声大，误读乱码文本偶发重复（同角度同光照
     // 系统性误读），2 次即输出导致"同一码多次扫描结果不一致"；3 次下真文本
     // 仅多等一帧（cpp1+g1 同帧双命中已占 2 次，日志实测），乱码需凑 3 次
     // （跨层一致罕见 / 连续 3 帧同乱码）输出概率大幅下降
     private static final int DM_CONFIRM_HITS = 3;
+    // 确认计数 TTL：乱码 2s 无再命中即过期（防乱码洪水挤爆计数表）
+    private static final long DM_CONFIRM_TTL_MS = 2000;
     // 已出码文本 → 上次对外输出时间（连续模式同码去重窗口）
     private final java.util.HashMap<String, Long> deliveredAt = new java.util.HashMap<>();
     private static final long DELIVER_DEDUPE_MS = 2500;
@@ -66,6 +68,9 @@ class DecodeEngine {
     private long lastZoomReqMs = 0;
     // 最近一次追踪到疑似码的时间（pending/confirmed 任一）：超时回退依据
     private long lastTrackMs = 0;
+    // 上次已应用的变焦倍率：req 只升不降（真机日志 14:25~14:28 在 1.5↔2.0↔1.0
+    // 反复横跳，每次变化 AF 重建 ~1s 模糊期拉低识别率）；降档唯一路径是 reset
+    private float lastZoomRatio = 1.0f;
     // 数码 zoom 上限 3x：超过后画质插值衰减，DotPeen 码 2.5x+ 对焦距离已足够
     private static final float AUTO_ZOOM_MAX = 3.0f;
     private static final long AUTO_ZOOM_COOLDOWN_MS = 1500;
@@ -100,6 +105,10 @@ class DecodeEngine {
             // 目标倍率 0.5 步进：pitchEst=4→2.5x、5→2.0x、7→1.5x
             float target = Math.round(9.5f / pitchEst * 2f) / 2f;
             target = Math.max(1.5f, Math.min(AUTO_ZOOM_MAX, target));
+            if (target <= lastZoomRatio + 0.05f) {
+                return; // 只升不降：pitchEst 在阈值边缘波动时避免反复横跳
+            }
+            lastZoomRatio = target;
             lastZoomReqMs = now;
             Log.i(TAG, "zoom req " + target + " pitchEst=" + pitchEst);
             ScanFileLog.log("zoom req " + target + " pitchEst=" + pitchEst);
@@ -111,24 +120,25 @@ class DecodeEngine {
         if (noSignal && now - lastTrackMs > 6000) {
             lastTrackMs = now; // 防止冷却期内每帧重复请求
             lastZoomReqMs = now;
-            Log.i(TAG, "zoom reset 1.0");
-            ScanFileLog.log("zoom reset 1.0");
-            l.onZoomRequest(1.0f);
+            if (lastZoomRatio > 1.0f) {
+                lastZoomRatio = 1.0f;
+                Log.i(TAG, "zoom reset 1.0");
+                ScanFileLog.log("zoom reset 1.0");
+                l.onZoomRequest(1.0f);
+            }
         }
     }
 
     DecodeEngine(boolean dpmMode, Set<String> formats) {
         this.dpmMode = dpmMode;
         this.formats = formats;
-        // DPM 模式限定 cpp 层格式为 {DATA_MATRIX, QR_CODE}：DM 是业务目标，
-        // QR 是移动端最常见码（H5 跳转链接）必须保持 cpp1 首帧直出（非 DM
-        // 结果无跨帧确认，40ms 即出码）；其余 11 种格式（一维码/PDF417 等）
-        // 从 cpp 每帧全格式扫描中排除，单帧省 30~50ms 全部让给慢层多帧累积。
-        // 排除的格式仍有 Java 级联兜底（hints 按调用方 formats 配置全量设置）
+        // DPM 模式 cpp 层只留 DATA_MATRIX。曾保留 QR_CODE 想兼容普通二维码
+        // （cpp1 首帧直出），但真机日志证伪：金属喷砂纹理会稳定误判成 QR
+        // （14:05:36 连续 7 帧 cpp1 QR 命中直出，非 DM 结果无确认门槛直接
+        // 对外输出错误文本），产线数据错误不可接受。dpm=true 时 QR 由 Java
+        // 级联兜底（hints 全格式 + confirmCameraResult 跨帧确认拦截误读）
         java.util.Set<zxingcpp.BarcodeReader.Format> cppFormats = dpmMode
-                ? java.util.EnumSet.of(
-                        zxingcpp.BarcodeReader.Format.DATA_MATRIX,
-                        zxingcpp.BarcodeReader.Format.QR_CODE)
+                ? java.util.Collections.singleton(zxingcpp.BarcodeReader.Format.DATA_MATRIX)
                 : null;
         zxingcpp.BarcodeReader.Options opts = new zxingcpp.BarcodeReader.Options();
         opts.setTryHarder(true);
@@ -233,25 +243,42 @@ class DecodeEngine {
         }
         lastTrackMs = android.os.SystemClock.elapsedRealtime(); // 追踪中：变焦回退计时基准
         String key = text;
+        long now = android.os.SystemClock.elapsedRealtime();
         // "f"（全分辨率 ROI 粗二值化）垃圾误读率高（真机实测产出 "88"/"07132546"），
         // 确认门槛提高一档
         int need = scaleTag.startsWith("f") ? DM_CONFIRM_HITS + 1 : DM_CONFIRM_HITS;
-        int[] cnt = dmHitCounts.get(key);
+        long[] cnt = dmHitCounts.get(key);
+        // TTL 过期（真机日志：确认表被乱码洪水灌到 175 个 key，48 上限全清
+        // 反复打断真码确认——BYD 码 pending 11 轮才凑满 3 次）。乱码 2s 未
+        // 再次命中即过期；真码连续命中 3 次仅需 ~240ms，不受影响
+        if (cnt != null && now - cnt[1] > DM_CONFIRM_TTL_MS) {
+            dmHitCounts.remove(key);
+            cnt = null;
+        }
         if (cnt == null) {
             if (dmHitCounts.size() > 48) {
-                dmHitCounts.clear(); // 防膨胀
+                // 防膨胀：先清过期乱码（TTL 后表通常已很小，全清极少触发）
+                for (java.util.Iterator<java.util.Map.Entry<String, long[]>> it
+                        = dmHitCounts.entrySet().iterator(); it.hasNext(); ) {
+                    if (now - it.next().getValue()[1] > DM_CONFIRM_TTL_MS) {
+                        it.remove();
+                    }
+                }
+                if (dmHitCounts.size() > 48) {
+                    dmHitCounts.clear();
+                }
             }
-            dmHitCounts.put(key, new int[]{1});
+            dmHitCounts.put(key, new long[]{1, now});
             Log.d(TAG, "dm pending confirm [" + scaleTag + "]: " + text);
             ScanFileLog.log("dm pending [" + scaleTag + "]: " + text);
             return null;
         }
         cnt[0]++;
+        cnt[1] = now;
         if (cnt[0] >= need) {
             dmHitCounts.remove(key);
             // 已出码文本 2.5s 去重：确认后计数已清零，持续对准同一码会每 2 帧
             // 重新凑满确认 → 连续模式下同一码反复对外输出（真机"重复扫描"）
-            long now = android.os.SystemClock.elapsedRealtime();
             Long last = deliveredAt.get(text);
             if (last != null && now - last < DELIVER_DEDUPE_MS) {
                 return null;
