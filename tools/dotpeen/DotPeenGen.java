@@ -130,13 +130,19 @@ public class DotPeenGen {
         for (int my = 0; my < rows; my++)
             for (int mx = 0; mx < cols; mx++) {
                 if (!m.get(mx, my)) continue;
-                int jx = p.jitterPct > 0 ? r.nextInt(2 * p.jitterPct + 1) - p.jitterPct : 0;
-                int jy = p.jitterPct > 0 ? r.nextInt(2 * p.jitterPct + 1) - p.jitterPct : 0;
+                boolean finder = mx == 0 || my == rows - 1; // L 定位边（左列+底行）
+                // 真实打标机打 L 边时针头走刀重叠、压痕连续：点径加大 40% 保证
+                // 相邻点重叠成带（黑底上点串间隙会破坏 DM 定位）；抖动减半
+                int jp = finder ? p.jitterPct / 2 : p.jitterPct;
+                int jx = jp > 0 ? r.nextInt(2 * jp + 1) - jp : 0;
+                int jy = jp > 0 ? r.nextInt(2 * jp + 1) - jp : 0;
                 if (p.block) {
                     fillRect(v, (MARGIN + mx) * PX, (MARGIN + my) * PX, PX, PX, p.dot, p.noiseAmp, r);
                     continue;
                 }
-                double dr = p.radiusRatio * (0.85 + 0.3 * r.nextDouble());
+                double dr = finder
+                        ? p.radiusRatio * 1.4
+                        : p.radiusRatio * (0.85 + 0.3 * r.nextDouble());
                 double rad = dr * PX;
                 double ox = (MARGIN + mx + 0.5) * PX + 0.01 * jx * PX;
                 double oy = (MARGIN + my + 0.5) * PX + 0.01 * jy * PX;

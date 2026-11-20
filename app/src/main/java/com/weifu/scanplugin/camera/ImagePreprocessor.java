@@ -158,6 +158,79 @@ final class ImagePreprocessor {
     }
 
     /**
+     * Otsu 全局阈值（类间方差最大化）：点距估计专用。
+     * adaptiveThreshold 的局部窗口在"点径≈窗口"时会切断大点（点中心局部
+     * 均值被拉低反而不黑），run 统计失真——全局阈值保持点结构完整
+     */
+    static int otsuThreshold(byte[] gray) {
+        int[] hist = new int[256];
+        for (byte b : gray) {
+            hist[b & 0xFF]++;
+        }
+        int total = gray.length;
+        double sum = 0;
+        for (int i = 0; i < 256; i++) {
+            sum += (double) i * hist[i];
+        }
+        double sumB = 0;
+        int wB = 0;
+        double maxVar = -1;
+        int threshold = 127;
+        for (int t = 0; t < 256; t++) {
+            wB += hist[t];
+            if (wB == 0) {
+                continue;
+            }
+            int wF = total - wB;
+            if (wF == 0) {
+                break;
+            }
+            sumB += (double) t * hist[t];
+            double mB = sumB / wB, mF = (sum - sumB) / wF;
+            double var = wB * (double) wF * (mB - mF) * (mB - mF);
+            if (var > maxVar) {
+                maxVar = var;
+                threshold = t;
+            }
+        }
+        return threshold;
+    }
+
+    /**
+     * 双线性任意倍率缩放：相册大点距图（点距>11px）归一化到甜蜜区用。
+     * 相机路径的 cropAndScale 只支持整数倍放大；相册单次解码面对任意
+     * 分辨率的图（测试图/特写照点距 14px+），需要非整数缩放把点距
+     * 精确推到 9~10px 链族参数基准区
+     *
+     * @return {bytes, width, height}
+     */
+    static Object[] bilinearScale(byte[] gray, int width, int height, float kx, float ky) {
+        int outW = Math.max(1, Math.round(width * kx));
+        int outH = Math.max(1, Math.round(height * ky));
+        byte[] out = new byte[outW * outH];
+        for (int y = 0; y < outH; y++) {
+            float sy = (y + 0.5f) / ky - 0.5f;
+            int y0 = (int) Math.floor(sy);
+            float fy = sy - y0;
+            int y1 = Math.min(height - 1, y0 + 1);
+            y0 = Math.max(0, y0);
+            for (int x = 0; x < outW; x++) {
+                float sx = (x + 0.5f) / kx - 0.5f;
+                int x0 = (int) Math.floor(sx);
+                float fx = sx - x0;
+                int x1 = Math.min(width - 1, x0 + 1);
+                x0 = Math.max(0, x0);
+                float p = (gray[y0 * width + x0] & 0xFF) * (1 - fx) * (1 - fy)
+                        + (gray[y0 * width + x1] & 0xFF) * fx * (1 - fy)
+                        + (gray[y1 * width + x0] & 0xFF) * (1 - fx) * fy
+                        + (gray[y1 * width + x1] & 0xFF) * fx * fy;
+                out[y * outW + x] = (byte) Math.round(p);
+            }
+        }
+        return new Object[]{out, outW, outH};
+    }
+
+    /**
      * 均值降采样（2x2 盒滤波）：DPM 全帧管线提速用。
      * 相比最近邻，盒滤波保留局部亮度均值，降采样后二值化效果更稳定。
      *

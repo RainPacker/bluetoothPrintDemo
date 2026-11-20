@@ -191,29 +191,37 @@ class DecodeEngine {
                 return -1;
             }
             byte[] img = ImagePreprocessor.downscale(gray, width, height, factor);
-            ImagePreprocessor.adaptiveThreshold(img, w, h);
-            java.util.ArrayList<Integer> runs = new java.util.ArrayList<>();
+            // Otsu 全局阈值而非 adaptiveThreshold：局部窗口与点径相当时会把
+            // 大点切碎（点径 12px ≈ 窗口 15px 的生成图/特写照），run 统计全乱
+            int otsu = ImagePreprocessor.otsuThreshold(img);
+            for (int i = 0; i < img.length; i++) {
+                img[i] = (img[i] & 0xFF) < otsu ? (byte) 0 : (byte) 255;
+            }
+            // 黑/白双通道 run 统计：点化 DM 的"点"在暗底图上是白色（闪存压痕
+            // 反光）——只统计黑 run 时暗底图估出的是点间隙（真机生成图 pitch=4，
+            // 实际 14px）。取两通道中位数更大的一侧，两种底色下都对应点径
+            java.util.ArrayList<Integer> blackRuns = new java.util.ArrayList<>();
+            java.util.ArrayList<Integer> whiteRuns = new java.util.ArrayList<>();
             for (int y = 0; y < h; y += 2) {
                 int run = 0;
+                boolean black = (img[y * w] & 0xFF) == 0;
                 for (int x = 0; x < w; x++) {
-                    if ((img[y * w + x] & 0xFF) == 0) {
+                    boolean b = (img[y * w + x] & 0xFF) == 0;
+                    if (b == black) {
                         run++;
                     } else {
                         if (run >= 2 && run <= 60) {
-                            runs.add(run);
+                            (black ? blackRuns : whiteRuns).add(run);
                         }
-                        run = 0;
+                        run = 1;
+                        black = b;
                     }
                 }
                 if (run >= 2 && run <= 60) {
-                    runs.add(run);
+                    (black ? blackRuns : whiteRuns).add(run);
                 }
             }
-            if (runs.size() < 20) {
-                return -1;
-            }
-            java.util.Collections.sort(runs);
-            int median = runs.get(runs.size() / 2);
+            int median = pickPitchMedian(blackRuns, whiteRuns);
             if (median < 3) {
                 return -1;
             }
@@ -221,6 +229,35 @@ class DecodeEngine {
         } catch (Exception e) {
             return -1;
         }
+    }
+
+    /**
+     * 点距中位数取舍：取黑/白 run 中位数更大的一侧。亮底暗点图黑 run=点径、
+     * 白 run=点间隙；暗底亮点图相反——更大的一侧总是点径（点直径 0.7~0.9
+     * 倍点距，远大于 0.1~0.3 倍的间隙）。
+     */
+    private static int pickPitchMedian(java.util.ArrayList<Integer> black, java.util.ArrayList<Integer> white) {
+        int mb = black.size() >= 20 ? black.get(black.size() / 2) : 0;
+        int mw = white.size() >= 20 ? white.get(white.size() / 2) : 0;
+        return Math.max(mb, mw);
+    }
+
+    /**
+     * 灰度中值（直方图累计取中值）：暗底/亮底判定用，比均值抗反光极值干扰。
+     */
+    private static int medianGray(byte[] img) {
+        int[] hist = new int[256];
+        for (byte b : img) {
+            hist[b & 0xFF]++;
+        }
+        int half = img.length / 2, acc = 0;
+        for (int v = 0; v < 256; v++) {
+            acc += hist[v];
+            if (acc >= half) {
+                return v;
+            }
+        }
+        return 128;
     }
 
     /**
@@ -726,14 +763,16 @@ class DecodeEngine {
      * 解码 Bitmap（相册选图 / F-12）
      */
     Result decodeBitmap(Bitmap bitmap) {
+        long albumT0 = android.os.SystemClock.elapsedRealtime();
+        int w = bitmap.getWidth();
+        int h = bitmap.getHeight();
         // C++ 主引擎直读（彩色 Bitmap，识别率高于先转灰度）
         Result result = cppDecode(bitmap, cppReader);
+        ScanFileLog.log("album cpp " + w + "x" + h + " " + (android.os.SystemClock.elapsedRealtime() - albumT0) + "ms hit=" + (result != null));
         if (result != null) {
             return result;
         }
         setHints();
-        int w = bitmap.getWidth();
-        int h = bitmap.getHeight();
         int[] pixels = new int[w * h];
         bitmap.getPixels(pixels, 0, w, 0, 0, w, h);
         byte[] gray = new byte[w * h];
@@ -754,6 +793,7 @@ class DecodeEngine {
         // → 多数派稳定选中真文本；无多数派宁可不输出（报未识别），绝不输出错文本
         java.util.List<Result> hits = new java.util.ArrayList<>();
         decodeGrayDpm(gray, w, h, false, -1, hits);
+        int hitsMain = hits.size();
         // 多尺度补充：相册大图（限 1600px）中圆点 DM 点距可能仍远大于解码甜蜜区
         // （点距/降采样后 ≈9~10px，实拍验证），依次补 /4、/8 档
         for (int f : new int[]{4, 8}) {
@@ -763,7 +803,47 @@ class DecodeEngine {
             byte[] s = ImagePreprocessor.downscale(gray, w, h, f);
             decodeGrayDpm(s, w / f, h / f, true, -1, hits);
         }
-        return pickMajorityResult(hits);
+        // 点距归一化档：测试图/特写照点距可达 14px+，链族窗口参数与 cpp 的
+        // 检测基准都在 9~11px——双线性缩放把点距推回甜蜜区再跑全变体
+        // （相机路径 upscale 的相册等价物；/2 档 7px 与原图 14px 都卡在
+        // 甜蜜区两侧，真机生成图相册全败的根因）
+        int pitch = estimatePitch(gray, w, h);
+        ScanFileLog.log("album pitch=" + pitch);
+        if (pitch > 10) {
+            float k = Math.max(0.3f, 9.5f / pitch);
+            Object[] up = ImagePreprocessor.bilinearScale(gray, w, h, k, k);
+            byte[] sImg = (byte[]) up[0];
+            int sW = (int) up[1], sH = (int) up[2];
+            // 暗底图（闪存压痕亮点）反色后与亮底暗点同构，链族/定位器按
+            // 常规 DM 亮底暗点处理；直方图中值 <128 判暗底
+            boolean inverted = false;
+            if (medianGray(sImg) < 128) {
+                ImagePreprocessor.invert(sImg);
+                inverted = true;
+            }
+            int before = hits.size();
+            decodeGrayDpm(sImg, sW, sH, true, -1, hits);
+            ScanFileLog.log("album pitchNorm x" + String.format("%.2f", k)
+                    + " -> " + sW + "x" + sH
+                    + (inverted ? " inv" : "")
+                    + " hits+=" + (hits.size() - before));
+        }
+        Result voted = pickMajorityResult(hits);
+        // 相册诊断埋点：变体命中数与候选文本票型。此前相册路径无日志，
+        // 测试图"未识别"时失败环节完全不可见
+        java.util.LinkedHashSet<String> texts = new java.util.LinkedHashSet<>();
+        for (Result hr : hits) {
+            String t = hr.getText();
+            if (t != null) {
+                texts.add(t.length() > 20 ? t.substring(0, 20) + ".." : t);
+            }
+        }
+        ScanFileLog.log("album gray " + w + "x" + h
+                + " hits=" + hitsMain + "/" + hits.size()
+                + " votes=" + texts
+                + " -> " + (voted == null ? "NONE" : voted.getText())
+                + " " + (android.os.SystemClock.elapsedRealtime() - albumT0) + "ms");
+        return voted;
     }
 
     /**
