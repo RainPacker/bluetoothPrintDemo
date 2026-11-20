@@ -164,6 +164,19 @@ class DecodeEngine {
         globalOpts.setTextMode(zxingcpp.BarcodeReader.TextMode.PLAIN);
         globalOpts.setBinarizer(zxingcpp.BarcodeReader.Binarizer.GLOBAL_HISTOGRAM);
         cppReaderGlobal = new zxingcpp.BarcodeReader(globalOpts);
+
+        // 小码探针专用 reader（全格式，含 QR）：DPM 模式 cpp1/g1 限 DM-only
+        // 是历史决策（喷砂纹理稳定误判 QR 直出），但代价是普通 QR 只能靠
+        // Java 链族偶发命中（真机 ROL-W10 实测小 QR 出码 5~32s）。
+        // 本 reader 仅用于 cppSm 小码探针层（取景框 ROI 内、结果走跨帧
+        // 2 次确认防误读），速度与产线安全兼顾
+        zxingcpp.BarcodeReader.Options qrOpts = new zxingcpp.BarcodeReader.Options();
+        qrOpts.setTryHarder(true);
+        qrOpts.setTryRotate(true);
+        qrOpts.setTryInvert(true);
+        qrOpts.setTryDownscale(true);
+        qrOpts.setTextMode(zxingcpp.BarcodeReader.TextMode.PLAIN);
+        cppReaderQr = new zxingcpp.BarcodeReader(qrOpts);
     }
 
     /**
@@ -279,6 +292,10 @@ class DecodeEngine {
             return null;
         }
         lastTrackMs = android.os.SystemClock.elapsedRealtime(); // 追踪中：变焦回退计时基准
+        // 非 DM（QR/一维码）与 DM 统一走 2 次跨帧确认：曾试过非 DM 单次直出
+        // （15:13 版本），但产线喷砂纹理伪造 QR 是稳定复现的（历史 14:05:36
+        // 连续 7 帧误读），单次直出会放行错误数据；cppSm 探针命中率上来后
+        // 2 次确认总延迟 ~1s，安全代价可接受
         String key = text;
         long now = android.os.SystemClock.elapsedRealtime();
         // "f"（全分辨率 ROI 粗二值化）垃圾误读率高（真机实测产出 "88"/"07132546"），
@@ -398,7 +415,7 @@ class DecodeEngine {
         // （真机"特写无法识别"回归实证）。cpp 层 40~75ms 本就不是瓶颈，
         // ROI 收益集中在慢层级联
         long t0 = android.os.SystemClock.elapsedRealtime();
-        Result result = cppDecode(grayToBitmap(gray, width, height), cppReader);
+        Result result = cppDecodeInRoi(grayToBitmap(gray, width, height), cppReader, roi);
         long t1 = android.os.SystemClock.elapsedRealtime();
         Log.d(TAG, "cpp1 " + (t1 - t0) + "ms hit=" + (result != null));
         ScanFileLog.log("cpp1 " + (t1 - t0) + "ms hit=" + (result != null));
@@ -420,7 +437,7 @@ class DecodeEngine {
         // ===== 第 2 层：全局直方图二值化兜底（圆点 DM 专项，全分辨率）=====
         // DotPeen 圆点码的模块是孤立圆点，局部均值二值化（LOCAL_AVERAGE）在点间隙处
         // 易产生误判；GLOBAL_HISTOGRAM 按全图灰度分布取阈值，对圆点边缘响应不同
-        result = cppDecode(grayToBitmap(gray, width, height), cppReaderGlobal);
+        result = cppDecodeInRoi(grayToBitmap(gray, width, height), cppReaderGlobal, roi);
         if (result != null) {
             if (result.getBarcodeFormat() != com.google.zxing.BarcodeFormat.DATA_MATRIX) {
                 return result;
@@ -508,6 +525,32 @@ class DecodeEngine {
         result = decodeGrayDpm(workImg, workW, workH, true, frameCounter % 3);
         if (result != null) {
             return confirmCameraResult(result, "m" + factor);
+        }
+
+        // ===== 小码 cpp 探针层（cppSm，全格式 reader）=====
+        // 关键教训（真机 15:20 日志 cpp2x 每帧 miss 根因复盘）：
+        // 1) DPM 模式 cppReader 是 DM-only（喷砂 QR 误读史），QR 对 cpp 不可见
+        //    ——必须用全格式专用 reader；
+        // 2) cpp 的 LOCAL_AVERAGE 局部均值窗口 ≈ 图像短边/8：全帧 150px、
+        //    ×2 放大图 164px，小 QR（100~200px）整码落在 1~2 个窗口内，
+        //    局部对比度被均值抹平——放大并不能修复均值窗口吞模块问题，
+        //    真正有效的是紧裁剪（decodeRoi 的 0.3×3 档窗口仅 ~40px）与
+        //    全格式 reader 本身；
+        // 本层：原始 ROI（cppReaderQr）每帧探测 + ×2 放大（每 2 帧）覆盖
+        // 偏小码；ROI 内不裁剪、不依赖码居中。QR 非 DM 走跨帧 2 次确认
+        // （防喷砂伪造 QR 稳定误读直出，回退 15:13 的单次直出）
+        if ((long) width * height <= 1_300_000L) {
+            long tSm = android.os.SystemClock.elapsedRealtime();
+            Result smallHit = cppDecode(grayToBitmap(gray, width, height), cppReaderQr);
+            if (smallHit == null && frameCounter % 2 == 0) {
+                Object[] up2x = ImagePreprocessor.cropAndScale(gray, width, height, 0.75f, 0.75f, 2);
+                smallHit = cppDecode(grayToBitmap((byte[]) up2x[0], (int) up2x[1], (int) up2x[2]), cppReaderQr);
+            }
+            long tSmDone = android.os.SystemClock.elapsedRealtime();
+            ScanFileLog.log("cppSm " + (tSmDone - tSm) + "ms hit=" + (smallHit != null));
+            if (smallHit != null) {
+                return confirmCameraResult(smallHit, "cppSm");
+            }
         }
 
         int pitchEst = estimatePitch(gray, width, height);
@@ -628,6 +671,7 @@ class DecodeEngine {
      */
     private final zxingcpp.BarcodeReader cppReader;
     private final zxingcpp.BarcodeReader cppReaderGlobal;
+    private final zxingcpp.BarcodeReader cppReaderQr;
 
     private Result cppDecode(Bitmap bitmap, zxingcpp.BarcodeReader reader) {
         try {
@@ -640,6 +684,54 @@ class DecodeEngine {
             Log.w(TAG, "cpp decode failed, fallback to java", t);
         }
         return null;
+    }
+
+    /**
+     * cpp 全帧解码 + 取景框位置过滤：cpp1/g1 按设计跑全帧（特写码大于方框时
+     * 裁 ROI 会裁掉定位边），代价是框外码也会被识别（真机反馈：旁边的其他
+     * 码/标签误触发）。本方法按"码中心点落在取景框内"过滤——特写大码中心
+     * 在框内不受影响，框外码（中心在框外）不再输出。
+     *
+     * @param roi 取景框 {x0,y0,w,h}（旋转矫正后坐标），null=不过滤
+     */
+    private Result cppDecodeInRoi(Bitmap bitmap, zxingcpp.BarcodeReader reader, int[] roi) {
+        try {
+            java.util.List<zxingcpp.BarcodeReader.Result> results =
+                    reader.read(bitmap, new android.graphics.Rect(), 0);
+            if (results != null && !results.isEmpty()) {
+                for (zxingcpp.BarcodeReader.Result rr : results) {
+                    if (isCenterInRoi(rr.getPosition(), roi)) {
+                        return toZxingResult(rr);
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "cpp decode failed, fallback to java", t);
+        }
+        return null;
+    }
+
+    /**
+     * 码中心是否在取景框内（外扩 5% 容差：码中心贴框边仍算有效瞄准）。
+     * 用中心而非四角：特写时码大于方框，四角必然出框，中心判定不误杀。
+     */
+    private static boolean isCenterInRoi(zxingcpp.BarcodeReader.Position pos, int[] roi) {
+        if (pos == null || roi == null || roi.length != 4) {
+            return true; // 无位置信息或无取景框：不过滤
+        }
+        android.graphics.Point tl = pos.getTopLeft();
+        android.graphics.Point tr = pos.getTopRight();
+        android.graphics.Point br = pos.getBottomRight();
+        android.graphics.Point bl = pos.getBottomLeft();
+        if (tl == null || tr == null || br == null || bl == null) {
+            return true;
+        }
+        float cx = (tl.x + tr.x + br.x + bl.x) / 4f;
+        float cy = (tl.y + tr.y + br.y + bl.y) / 4f;
+        int mx = Math.max(1, roi[2] / 20);
+        int my = Math.max(1, roi[3] / 20);
+        return cx >= roi[0] - mx && cx <= roi[0] + roi[2] + mx
+                && cy >= roi[1] - my && cy <= roi[1] + roi[3] + my;
     }
 
     /**
@@ -1165,6 +1257,15 @@ class DecodeEngine {
         byte[] roi = (byte[]) cropped[0];
         int roiW = (int) cropped[1];
         int roiH = (int) cropped[2];
+        // cpp 引擎接力（首选）：小码（QR/DM）模块在全帧只有 3~4px，cpp 全帧定位
+        // 失败（tryDownscale 只能向下找码，小码需要的是放大）；ROI 2x 放大后模块
+        // 翻倍到 6~8px，cpp 命中率大幅提升。真机实测：小 QR 全帧 cpp1 每帧 miss，
+        // 仅 /2 链族偶发命中，扫码延迟 5~32s——放大 ROI 交 cpp 是缺的最后一环
+        Result rCpp = cppDecode(grayToBitmap(roi, roiW, roiH), cppReader);
+        if (rCpp != null) {
+            if (collectList != null) collectList.add(rCpp); else return rCpp;
+        }
+
         Result r = acceptDpmJava(tryDecode(new GrayscaleSource(roi, roiW, roiH), true));
         if (r != null) {
             if (collectList != null) collectList.add(r); else return r;
@@ -1195,6 +1296,13 @@ class DecodeEngine {
         r = acceptDpmJava(tryDecode(new GrayscaleSource(roiDot, roiW, roiH), false));
         if (r != null) {
             if (collectList != null) collectList.add(r); else return r;
+        }
+
+        // 点链二值图交 cpp（GLOBAL_HISTOGRAM 读 0/255 图即按阈值分离，
+        // 低对比/明暗不均场景下 cpp 对二值图的定位鲁棒性优于灰度图）
+        rCpp = cppDecode(grayToBitmap(roiDot, roiW, roiH), cppReaderGlobal);
+        if (rCpp != null) {
+            if (collectList != null) collectList.add(rCpp); else return rCpp;
         }
 
         byte[] roiDotInv = roiDot.clone();

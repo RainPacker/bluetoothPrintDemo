@@ -125,10 +125,10 @@
                     android:layout_width="32dp"
                     android:layout_height="32dp"
                     android:src="@drawable/ic_scan_torch"
-                    android:contentDescription="闪光灯"
-                    app:tint="#FFFFFF" />
+                    android:contentDescription="闪光灯" />
 
                 <TextView
+                    android:id="@+id/tv_torch_label"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"

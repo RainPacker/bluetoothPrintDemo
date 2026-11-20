@@ -519,13 +519,20 @@ public class ScanCameraActivity extends AppCompatActivity {
     }
 
     /**
-     * 闪光灯图标状态切换（开=亮黄闪电）
+     * 闪光灯状态切换（开=亮黄闪电+放射光线图标，标签同步高亮/改文案；
+     * 关=白色闪电）。原实现布局层 app:tint 强制白色覆盖了 ON 态颜色，
+     * 两态渲染完全相同，用户无法区分——已移除 tint 并做形态区分
      */
     private void updateTorchIcon() {
         if (torchIcon != null) {
             torchIcon.setImageResource(torchOn
                     ? R.drawable.ic_scan_torch_on
                     : R.drawable.ic_scan_torch);
+        }
+        TextView torchLabel = findViewById(R.id.tv_torch_label);
+        if (torchLabel != null) {
+            torchLabel.setText(torchOn ? "关闭闪光灯" : "闪光灯");
+            torchLabel.setTextColor(torchOn ? 0xFFFFD60A : 0xCCFFFFFF);
         }
     }
 

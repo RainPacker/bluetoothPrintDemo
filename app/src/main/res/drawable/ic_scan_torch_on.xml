@@ -1,10 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 闪光灯开启态：高饱和黄闪电 + 四周放射光线（与关闭态的纯白闪电在颜色和形态上双重区分） -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+    <!-- 放射光线（开启态特征形态） -->
     <path
-        android:fillColor="#FFE066"
-        android:pathData="M7,2v11h3v9l7,-12h-4l4,-8z" />
+        android:strokeColor="#FFD60A"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:pathData="M2.5,9.5h2.2 M19.3,9.5h2.2 M3.6,4.2l1.6,1.6 M20.4,4.2l-1.6,1.6" />
+    <!-- 闪电 -->
+    <path
+        android:fillColor="#FFD60A"
+        android:pathData="M7.5,3.5v10h2.8v8l6.6,-11h-3.6l3.6,-7z" />
 </vector>
