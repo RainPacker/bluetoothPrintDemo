@@ -282,8 +282,12 @@ class DecodeEngine {
         String key = text;
         long now = android.os.SystemClock.elapsedRealtime();
         // "f"（全分辨率 ROI 粗二值化）垃圾误读率高（真机实测产出 "88"/"07132546"），
-        // 确认门槛提高一档
-        int need = scaleTag.startsWith("f") ? DM_CONFIRM_HITS + 1 : DM_CONFIRM_HITS;
+        // 确认门槛提高一档；"dg"（DotGrid 网格直解）相反单次即确认：网格对齐 +
+        // RS 内核 + 多阈值一致性检验的置信度远高于链族（真机日志 dg 命中文本
+        // 全部正确），且兜底层命中稀疏，跨帧凑 2 次的窗口经常等不到
+        // （真机 11:26:30 pending [dg] 后无第二次命中，用户已感知为识别失败）
+        int need = scaleTag.startsWith("dg") ? 1
+                : scaleTag.startsWith("f") ? DM_CONFIRM_HITS + 1 : DM_CONFIRM_HITS;
         long[] cnt = dmHitCounts.get(key);
         // TTL 过期（真机日志：确认表被乱码洪水灌到 175 个 key，48 上限全清
         // 反复打断真码确认——BYD 码 pending 11 轮才凑满 3 次）。乱码 2s 未
@@ -305,9 +309,24 @@ class DecodeEngine {
                     dmHitCounts.clear();
                 }
             }
-            dmHitCounts.put(key, new long[]{1, now});
+            dmHitCounts.put(key, new long[]{need, now});
             Log.d(TAG, "dm pending confirm [" + scaleTag + "]: " + text);
             ScanFileLog.log("dm pending [" + scaleTag + "]: " + text);
+            if (need <= 1) {
+                // dg 单次直出：走与确认路径相同的去重/输出逻辑
+                dmHitCounts.remove(key);
+                Long last0 = deliveredAt.get(text);
+                if (last0 != null && now - last0 < DELIVER_DEDUPE_MS) {
+                    return null;
+                }
+                if (deliveredAt.size() > 32) {
+                    deliveredAt.clear();
+                }
+                deliveredAt.put(text, now);
+                Log.i(TAG, "dm confirmed [" + scaleTag + "]: " + text);
+                ScanFileLog.log("dm confirmed [" + scaleTag + "]: " + text);
+                return r;
+            }
             return null;
         }
         cnt[0]++;
@@ -534,6 +553,12 @@ class DecodeEngine {
             if (result != null) {
                 return confirmCameraResult(result, "u" + scale);
             }
+            // DotPeen 点阵网格直解兜底（点式 L 定位边场景：zxing 定位器无法定位，
+            // 但网格采样直解内核可解——平板暗底点阵图实测根因）
+            Result dg = decodeDotGridLayer(gray, width, height);
+            if (dg != null) {
+                return confirmCameraResult(dg, "dg");
+            }
             // 小点距帧跑降采样管线是纯浪费，直接等下一帧
             return null;
         }
@@ -565,9 +590,31 @@ class DecodeEngine {
         // fullResRoi：2.76MP 多趟解码（真机实测为级联 2s 的主要构成之一），
         // 每 3 帧跑一次，其余帧跳过（省下的时间让有效帧率翻倍）
         if (frameCounter % 3 == 0) {
-            return confirmCameraResult(decodeFullResRoi(gray, width, height), "f");
+            Result f = confirmCameraResult(decodeFullResRoi(gray, width, height), "f");
+            if (f != null) {
+                return f;
+            }
+        }
+        // 第 4 层：DotPeen 点阵网格直解（点式 L 定位边专项兜底）
+        Result dg = decodeDotGridLayer(gray, width, height);
+        if (dg != null) {
+            return confirmCameraResult(dg, "dg");
         }
         return null;
+    }
+
+    /**
+     * DotPeen 点阵网格直解层（DotGridDecoder）：像素预算控制
+     * （>800px 侧先 /2 降采样，点距落入 3.5~60px 搜索区间即可）。
+     */
+    private Result decodeDotGridLayer(byte[] gray, int width, int height) {
+        int factor = Math.max(width, height) > 800 ? 2 : 1;
+        byte[] img = factor == 1 ? gray : ImagePreprocessor.downscale(gray, width, height, factor);
+        Result r = DotGridDecoder.decode(img, width / factor, height / factor);
+        if (r != null) {
+            ScanFileLog.log("dotGrid hit: " + r.getText());
+        }
+        return r;
     }
 
     /**
@@ -828,6 +875,13 @@ class DecodeEngine {
                     + (inverted ? " inv" : "")
                     + " hits+=" + (hits.size() - before));
         }
+        // DotPeen 点阵网格直解兜底（点式 L 定位边场景）：
+        // 命中结果参与多数派投票，与全变体命中互证
+        Result dg = DotGridDecoder.decode(gray, w, h);
+        if (dg != null) {
+            hits.add(dg);
+            ScanFileLog.log("album dotGrid hit: " + dg.getText());
+        }
         Result voted = pickMajorityResult(hits);
         // 相册诊断埋点：变体命中数与候选文本票型。此前相册路径无日志，
         // 测试图"未识别"时失败环节完全不可见
@@ -1014,26 +1068,26 @@ class DecodeEngine {
 
             byte[] close1 = binRaw.clone();
             ImagePreprocessor.closeMorph(close1, dw, dh);
-            r = tryDecodeBinWithInvert(close1, dw, dh);
+            r = acceptDpmJava(tryDecodeBinWithInvert(close1, dw, dh));
             if (r != null) {
                 if (collectList != null) collectList.add(r); else return r;
             }
 
             byte[] close2 = binRaw.clone();
             ImagePreprocessor.closeMorph(close2, dw, dh, 2);
-            r = tryDecodeBinWithInvert(close2, dw, dh);
+            r = acceptDpmJava(tryDecodeBinWithInvert(close2, dw, dh));
             if (r != null) {
                 if (collectList != null) collectList.add(r); else return r;
             }
 
             byte[] filled = binRaw.clone();
             ImagePreprocessor.fillHoles(filled, dw, dh);
-            r = tryDecodeBinWithInvert(filled, dw, dh);
+            r = acceptDpmJava(tryDecodeBinWithInvert(filled, dw, dh));
             if (r != null) {
                 if (collectList != null) collectList.add(r); else return r;
             }
             ImagePreprocessor.closeMorph(filled, dw, dh, 2);
-            r = tryDecodeBinWithInvert(filled, dw, dh);
+            r = acceptDpmJava(tryDecodeBinWithInvert(filled, dw, dh));
             if (r != null) {
                 if (collectList != null) collectList.add(r); else return r;
             }
@@ -1044,17 +1098,17 @@ class DecodeEngine {
             byte[] dotSolid = binRaw.clone();
             ImagePreprocessor.fillHoles(dotSolid, dw, dh);
             ImagePreprocessor.denoise(dotSolid, dw, dh);
-            r = tryDecodeBinWithInvert(dotSolid, dw, dh);
+            r = acceptDpmJava(tryDecodeBinWithInvert(dotSolid, dw, dh));
             if (r != null) {
                 if (collectList != null) collectList.add(r); else return r;
             }
             ImagePreprocessor.closeMorph(dotSolid, dw, dh);
-            r = tryDecodeBinWithInvert(dotSolid, dw, dh);
+            r = acceptDpmJava(tryDecodeBinWithInvert(dotSolid, dw, dh));
             if (r != null) {
                 if (collectList != null) collectList.add(r); else return r;
             }
             ImagePreprocessor.closeMorph(dotSolid, dw, dh);
-            r = tryDecodeBinWithInvert(dotSolid, dw, dh);
+            r = acceptDpmJava(tryDecodeBinWithInvert(dotSolid, dw, dh));
             if (r != null) {
                 if (collectList != null) collectList.add(r); else return r;
             }
@@ -1111,7 +1165,7 @@ class DecodeEngine {
         byte[] roi = (byte[]) cropped[0];
         int roiW = (int) cropped[1];
         int roiH = (int) cropped[2];
-        Result r = tryDecode(new GrayscaleSource(roi, roiW, roiH), true);
+        Result r = acceptDpmJava(tryDecode(new GrayscaleSource(roi, roiW, roiH), true));
         if (r != null) {
             if (collectList != null) collectList.add(r); else return r;
         }
@@ -1121,14 +1175,14 @@ class DecodeEngine {
         // 否则局部均值跟随圆点自适应会把点"吃掉"
         ImagePreprocessor.adaptiveThreshold(roiBin, roiW, roiH,
                 ImagePreprocessor.ADAPTIVE_WINDOW * scale, ImagePreprocessor.ADAPTIVE_C);
-        r = tryDecode(new GrayscaleSource(roiBin, roiW, roiH), false);
+        r = acceptDpmJava(tryDecode(new GrayscaleSource(roiBin, roiW, roiH), false));
         if (r != null) {
             if (collectList != null) collectList.add(r); else return r;
         }
 
         byte[] roiInv = roiBin.clone();
         ImagePreprocessor.invert(roiInv);
-        r = tryDecode(new GrayscaleSource(roiInv, roiW, roiH), false);
+        r = acceptDpmJava(tryDecode(new GrayscaleSource(roiInv, roiW, roiH), false));
         if (r != null) {
             if (collectList != null) collectList.add(r); else return r;
         }
@@ -1138,18 +1192,26 @@ class DecodeEngine {
         ImagePreprocessor.fillHoles(roiDot, roiW, roiH);
         ImagePreprocessor.denoise(roiDot, roiW, roiH);
         ImagePreprocessor.closeMorph(roiDot, roiW, roiH, 2);
-        r = tryDecode(new GrayscaleSource(roiDot, roiW, roiH), false);
+        r = acceptDpmJava(tryDecode(new GrayscaleSource(roiDot, roiW, roiH), false));
         if (r != null) {
             if (collectList != null) collectList.add(r); else return r;
         }
 
         byte[] roiDotInv = roiDot.clone();
         ImagePreprocessor.invert(roiDotInv);
-        r = tryDecode(new GrayscaleSource(roiDotInv, roiW, roiH), false);
+        r = acceptDpmJava(tryDecode(new GrayscaleSource(roiDotInv, roiW, roiH), false));
         if (r != null) {
             if (collectList != null) collectList.add(r); else return r;
         }
         return null;
+    }
+
+    /**
+     * Java 引擎 DM 结果统一出口：过滤短数字误读（见
+     * {@link #isSuspiciousShortNumericDm}），cpp 引擎结果不经此过滤。
+     */
+    private static Result acceptDpmJava(Result r) {
+        return isSuspiciousShortNumericDm(r) ? null : r;
     }
 
     /**
@@ -1166,6 +1228,32 @@ class DecodeEngine {
         ImagePreprocessor.denoise(bin, width, height);
         ImagePreprocessor.closeMorph(bin, width, height);
         return cppDecode(grayToBitmap(bin, width, height), cppReaderGlobal);
+    }
+
+    /**
+     * Java 引擎 DM 短数字误读过滤：DotPeen 噪声帧经点链/ROI 二值化后，
+     * Java zxing 会把残余点阵系统性误读为 ≤8 位纯数字（真机日志实锤：
+     * "21111112"/"27771211"/"16239928"/"10113363" 刷 pending；相册多数派
+     * 甚至被 "17262279" 5 票压过真码 BYD476ZQC-...）。
+     * 工业 DPM 码（零件号/批次号）远长于 8 位；仅过滤 DATA_MATRIX 格式
+     * （不影响 EAN-8/ITF 等短数字一维码），cpp 引擎路径不受影响——
+     * cpp 对这类噪声的误读率低，合法短数字码仍可经 cpp 层输出。
+     */
+    private static boolean isSuspiciousShortNumericDm(Result r) {
+        if (r == null || r.getBarcodeFormat() != com.google.zxing.BarcodeFormat.DATA_MATRIX) {
+            return false;
+        }
+        String t = r.getText();
+        if (t == null || t.isEmpty() || t.length() > 8) {
+            return false;
+        }
+        for (int i = 0; i < t.length(); i++) {
+            char ch = t.charAt(i);
+            if (ch < '0' || ch > '9') {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -1223,7 +1311,8 @@ class DecodeEngine {
                 }
                 pending--;
                 Result r = f.get();
-                if (r != null && r.getText() != null && !r.getText().isEmpty()) {
+                if (r != null && r.getText() != null && !r.getText().isEmpty()
+                        && !isSuspiciousShortNumericDm(r)) {
                     hits.add(r);
                 }
             }

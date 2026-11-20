@@ -369,11 +369,15 @@ public class UpdateManager {
 				  downloadDg.dismiss();
 				}
 				Log.d(TAG, "handleMessage: 下载完成");
-				if (isForce || !canNotify()) {
-					// 强制更新或无通知权限：自动安装
+				if (isForce) {
+					// 强制更新：保留原自动安装（不弹确认框、无法跳过）
 					installApk();
 				} else {
-					// 非强制更新：发可点击安装的通知，由用户决定
+					// 可选更新：下载完成后提示手动安装——通知栏入口容易被忽略
+					// （平板横幅被关/免打扰场景，实测表现为"下载完成后没反应"），
+					// 改为界面直接弹确认框，由用户点击"立即安装"触发系统安装器；
+					// 同步保留通知栏安装入口（点"稍后安装"后仍可从通知安装）
+					showInstallConfirmDialog();
 					showInstallNotification();
 				}
 				break;
@@ -441,6 +445,36 @@ public class UpdateManager {
 					== PackageManager.PERMISSION_GRANTED;
 		}
 		return true;
+	}
+
+	/**
+	 * 下载完成提示手动安装对话框（仅可选更新走此流程，强制更新保持自动安装）：
+	 * 提供"立即安装/稍后安装"，"稍后安装"仍可从通知栏入口安装
+	 * （无通知权限时提示重新检查更新的入口）。
+	 * 系统安装器由用户点击触发（手动安装，不静默安装）。
+	 */
+	private void showInstallConfirmDialog() {
+		mainHandler.post(() -> {
+			CustomDialog.Builder builder = new CustomDialog.Builder(mContext);
+			builder.setTitle("更新下载完成");
+			builder.setInfo("新版本安装包已下载完成，是否立即安装？选择\"稍后安装\"可从通知栏再次进入安装");
+			builder.setButtonConfirm("立即安装", v -> installApk());
+			builder.setButtonCancel("稍后安装", v -> {
+				if (!canNotify()) {
+					// 无通知权限时"稍后"没有通知入口兜底，告知重新获取入口的路径
+					Toast.makeText(mContext,
+							"已稍后安装：重新打开应用检查更新即可再次安装", Toast.LENGTH_LONG).show();
+				}
+			});
+			CustomDialog dg = builder.create();
+			try {
+				dg.show();
+			} catch (Exception e) {
+				e.printStackTrace();
+				// Activity 已销毁/应用在后台无法弹窗：回退通知入口
+				showInstallNotification();
+			}
+		});
 	}
 
 	/**
