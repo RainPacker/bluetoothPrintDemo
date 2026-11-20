@@ -512,6 +512,102 @@ final class ImagePreprocessor {
     }
 
     /**
+     * 连通域面积过滤去噪（保细长结构的小码专用）：
+     * 开运算 denoise（erode→dilate）会连 1~2px 细条码条、2~3px 小 QR 模块
+     * 一起抹掉，不能用于小码探针。本方法只清除面积 < minArea 的孤立黑色
+     * （0）噪斑（铝面氧化斑/纹理噪点）：条码细条（1~2px 宽 × 长条面积大）、
+     * QR 模块（≥3x3）均保留。
+     * 实现：扫描线洪泛填充（span 三元组栈，栈深 O(周长) 远小于逐像素栈），
+     * 每个连通域完整遍历后按面积裁决——不能用"面积超限提前中止"捷径：
+     * 中止会让大连通域的尾部残留变成伪小组件被误清（1px 细条尾段实测
+     * 被切掉 6px）。span 收集在面积超限后停止，大域不占收集内存。
+     */
+    static void despeckle(byte[] bin, int width, int height, int minArea) {
+        if (width < 3 || height < 3 || minArea <= 1) {
+            return;
+        }
+        byte[] visited = new byte[bin.length];
+        int[] stack = new int[256];
+        int[] spans = new int[96];
+        for (int seed = 0; seed < bin.length; seed++) {
+            if (visited[seed] != 0 || (bin[seed] & 0xFF) != 0) {
+                continue;
+            }
+            int top = 0, nsp = 0, area = 0;
+            boolean keep = false;
+            stack[top++] = seed / width;
+            stack[top++] = seed % width;
+            stack[top++] = seed % width;
+            visited[seed] = 1;
+            while (top > 0) {
+                int x1 = stack[--top], x0 = stack[--top], y = stack[--top];
+                // 行内扩展：从 span 中点向两侧延伸连续黑像素
+                int lx = x0;
+                while (lx > 0 && visited[y * width + lx - 1] == 0
+                        && (bin[y * width + lx - 1] & 0xFF) == 0) {
+                    visited[y * width + --lx] = 1;
+                }
+                int rx = x1;
+                while (rx < width - 1 && visited[y * width + rx + 1] == 0
+                        && (bin[y * width + rx + 1] & 0xFF) == 0) {
+                    visited[y * width + ++rx] = 1;
+                }
+                area += rx - lx + 1;
+                if (!keep && area > minArea) {
+                    keep = true;
+                    nsp = 0;
+                }
+                if (!keep) {
+                    if (nsp + 3 > spans.length) {
+                        int[] bigger = new int[spans.length * 2];
+                        System.arraycopy(spans, 0, bigger, 0, nsp);
+                        spans = bigger;
+                    }
+                    spans[nsp++] = y;
+                    spans[nsp++] = lx;
+                    spans[nsp++] = rx;
+                }
+                // 上下邻行扫新 span（像素在 push 时标记 visited 防重复入栈）
+                for (int ny = y - 1; ny <= y + 1; ny += 2) {
+                    if (ny < 0 || ny >= height) {
+                        continue;
+                    }
+                    int rowBase = ny * width;
+                    int x = lx;
+                    while (x <= rx) {
+                        if (visited[rowBase + x] == 0 && (bin[rowBase + x] & 0xFF) == 0) {
+                            int sx = x;
+                            visited[rowBase + x] = 1;
+                            while (x + 1 <= rx && visited[rowBase + x + 1] == 0
+                                    && (bin[rowBase + x + 1] & 0xFF) == 0) {
+                                x++;
+                                visited[rowBase + x] = 1;
+                            }
+                            if (top + 3 > stack.length) {
+                                int[] bigger = new int[stack.length * 2];
+                                System.arraycopy(stack, 0, bigger, 0, top);
+                                stack = bigger;
+                            }
+                            stack[top++] = ny;
+                            stack[top++] = sx;
+                            stack[top++] = x;
+                        }
+                        x++;
+                    }
+                }
+            }
+            if (!keep) {
+                for (int k = 0; k < nsp; k += 3) {
+                    int y = spans[k];
+                    for (int x = spans[k + 1]; x <= spans[k + 2]; x++) {
+                        bin[y * width + x] = (byte) 255;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * 3x3 形态学闭运算（膨胀→腐蚀，圆点 DM 专项）：
      * DotPeen 圆点码每个模块是独立圆点、点间隙使模块连接性断裂，
      * 传统采样网格失配而无法识别。闭运算先膨胀（圆点长大弥合间隙）

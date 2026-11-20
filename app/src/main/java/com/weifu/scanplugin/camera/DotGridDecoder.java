@@ -46,11 +46,25 @@ final class DotGridDecoder {
     /** 符号尺寸范围（ECC200 方形） */
     private static final int MIN_N = 10;
     private static final int MAX_N = 26;
+    /**
+     * ECC200 矩形规格（行x列）。真机场景：铝面 clean DotPeen 码
+     * P5317576|S26030016|V523690 为 12x26——方形-only 的网格直解对矩形码
+     * 永远失败（离线实测未识别），只能等更慢的定位器/链族路径，表现为
+     * "矩形码比方形码明显慢"
+     */
+    private static final int[][] VALID_RECT_DIMS = {
+            {8, 18}, {8, 32}, {12, 26}, {12, 36}, {16, 36}, {16, 48},
+    };
+    /** 宽高跨度比超过此值判定为矩形码 */
+    private static final double RECT_ASPECT_RATIO = 1.25;
 
     /**
      * 入口：先原尺寸解码；失败且图较大时 /2 降采样重试一次
      * （特写/测试图点距可达 14px+，降采样把点距推入搜索区间）。
      */
+    /** 最近一次解码尝试的阶段诊断（供 miss 日志暴露卡死阶段） */
+    public static volatile String lastDiag = "-";
+
     static Result decode(byte[] gray, int width, int height) {
         Result r = decodeOnce(gray, width, height);
         if (r != null) {
@@ -68,6 +82,7 @@ final class DotGridDecoder {
             return null;
         }
         int otsu = ImagePreprocessor.otsuThreshold(gray);
+        StringBuilder diag = new StringBuilder("otsu=").append(otsu).append(' ');
         // 双极性：暗底亮点（闪存压痕）→ 高侧为点；亮底暗点 → 低侧为点。
         // 亮点极性优先（DotPeen 暗底图为主场景）
         for (boolean brightDots : new boolean[]{true, false}) {
@@ -78,22 +93,44 @@ final class DotGridDecoder {
             }
             List<double[]> cents = extractCentroids(mask, width, height);
             if (cents == null) {
+                diag.append('p').append(brightDots ? 'B' : 'D').append(":none ");
                 continue;
             }
             double pitch = nnMedianPitch(cents);
             if (pitch < 3.5 || pitch > 60) {
+                diag.append('p').append(brightDots ? 'B' : 'D')
+                        .append("n").append(cents.size()).append("@").append(pitch).append("rng ");
                 continue;
             }
+            diag.append('p').append(brightDots ? 'B' : 'D')
+                    .append("n").append(cents.size()).append('@').append(pitch).append(' ');
             // 码区百分位边界（抗零星噪点外扩）
             double[] bounds = percentileBounds(cents);
-            double span = Math.max(bounds[1] - bounds[0], bounds[3] - bounds[2]);
+            double spanX = bounds[1] - bounds[0];
+            double spanY = bounds[3] - bounds[2];
+            double span = Math.max(spanX, spanY);
             int n0 = (int) Math.round(span / pitch) + 1;
-            Map<String, Integer> votes = new LinkedHashMap<>();
+            // 候选尺寸：方形（n0±2 偶数）+ 矩形（宽高比超阈值时追加 ECC200 矩形规格）
+            List<int[]> dims = new ArrayList<>();
             for (int n = Math.max(MIN_N, n0 - 2); n <= Math.min(MAX_N, n0 + 2); n++) {
-                if ((n & 1) != 0) {
-                    continue;
+                if ((n & 1) == 0) {
+                    dims.add(new int[]{n, n});
                 }
-                if ((n - 1) * pitch > Math.max(width, height) * 1.2) {
+            }
+            double aspect = spanX > spanY ? spanX / spanY : spanY / spanX;
+            if (aspect >= RECT_ASPECT_RATIO) {
+                int nRows0 = (int) Math.round(spanY / pitch) + 1;
+                int nCols0 = (int) Math.round(spanX / pitch) + 1;
+                for (int[] rect : VALID_RECT_DIMS) {
+                    if (Math.abs(rect[0] - nRows0) <= 1 && Math.abs(rect[1] - nCols0) <= 1) {
+                        dims.add(rect);
+                    }
+                }
+            }
+            Map<String, Integer> votes = new LinkedHashMap<>();
+            for (int[] dim : dims) {
+                int rows = dim[0], cols = dim[1];
+                if ((rows - 1) * pitch > height * 1.2 || (cols - 1) * pitch > width * 1.2) {
                     continue;
                 }
                 // 网格相位/点距局部搜索（mask 对比度最大化）
@@ -105,7 +142,7 @@ final class DotGridDecoder {
                         for (int oy = -8; oy <= 8; oy++) {
                             double gx = bounds[0] + ox * (p / 8);
                             double gy = bounds[2] + oy * (p / 8);
-                            double s = gridContrast(mask, width, height, gx, gy, p, n);
+                            double s = gridContrast(mask, width, height, gx, gy, p, rows, cols);
                             if (s > bestScore) {
                                 bestScore = s;
                                 bestP = p;
@@ -116,28 +153,32 @@ final class DotGridDecoder {
                     }
                 }
                 if (bestScore < MIN_CONTRAST) {
+                    diag.append(rows).append('x').append(cols)
+                            .append('=').append(bestScore).append("lo ");
                     continue;
                 }
+                diag.append(rows).append('x').append(cols)
+                        .append('=').append(bestScore).append(' ');
                 // 行/列晶格漂移精化
-                double[] colX = refineCols(mask, width, height, bestGx, bestGy, bestP, n);
-                double[] rowY = refineRows(mask, width, height, colX, bestGy, bestP, n);
+                double[] colX = refineCols(mask, width, height, bestGx, bestGy, bestP, cols);
+                double[] rowY = refineRows(mask, width, height, colX, bestGy, bestP, rows, cols);
                 // 格心亮度采样
                 float[][] lum = sampleLum(gray, width, height, colX, rowY, bestP);
-                // 阈值扫描（Otsu 邻域 + 格心亮度中值）× 极性 × 四方向内核直解
-                int mid = cellMidThreshold(lum, n);
+                // 阈值扫描（Otsu 邻域 + 格心亮度中值）× 极性 × 方向内核直解
+                int mid = cellMidThreshold(lum, rows * cols);
                 int[] thresholds = {otsu - 20, otsu - 10, otsu, otsu + 10, otsu + 20, mid};
                 Decoder kernel = new Decoder();
                 for (int t : thresholds) {
                     if (t < 0 || t > 255) {
                         continue;
                     }
-                    boolean[][] mat = new boolean[n][n];
-                    for (int my = 0; my < n; my++) {
-                        for (int mx = 0; mx < n; mx++) {
+                    boolean[][] mat = new boolean[rows][cols];
+                    for (int my = 0; my < rows; my++) {
+                        for (int mx = 0; mx < cols; mx++) {
                             mat[my][mx] = brightDots ? lum[my][mx] >= t : lum[my][mx] < t;
                         }
                     }
-                    tryKernelAllOrientations(mat, kernel, votes);
+                    tryKernelAllOrientations(mat, rows == cols, kernel, votes);
                     if (!votes.isEmpty()) {
                         break;
                     }
@@ -147,9 +188,11 @@ final class DotGridDecoder {
                 }
             }
             if (!votes.isEmpty()) {
+                lastDiag = diag.append("HIT").toString();
                 return buildVotedResult(votes);
             }
         }
+        lastDiag = diag.toString();
         return null;
     }
 
@@ -277,11 +320,11 @@ final class DotGridDecoder {
      * 点阵对齐时格心大量命中、间隙几乎为 0；失配时两者接近。
      */
     private static double gridContrast(boolean[] mask, int width, int height,
-                                       double gx, double gy, double p, int n) {
+                                       double gx, double gy, double p, int rows, int cols) {
         double on = 0, off = 0;
         int cnt = 0;
-        for (int my = 0; my < n; my++) {
-            for (int mx = 0; mx < n; mx++) {
+        for (int my = 0; my < rows; my++) {
+            for (int mx = 0; mx < cols; mx++) {
                 int ix = (int) Math.round(gx + mx * p);
                 int iy = (int) Math.round(gy + my * p);
                 if (ix >= 0 && iy >= 0 && ix < width && iy < height) {
@@ -329,15 +372,15 @@ final class DotGridDecoder {
     }
 
     private static double[] refineRows(boolean[] mask, int width, int height,
-                                       double[] colX, double gy, double p, int n) {
-        double[] rowY = new double[n];
+                                       double[] colX, double gy, double p, int rows, int cols) {
+        double[] rowY = new double[rows];
         int r = Math.max(2, (int) Math.round(p * 0.3));
-        for (int my = 0; my < n; my++) {
+        for (int my = 0; my < rows; my++) {
             double base = gy + my * p;
             double best = -1;
             double bestD = 0;
             for (int d = -r; d <= r; d++) {
-                double s = rowHit(mask, width, height, colX, base + d, n);
+                double s = rowHit(mask, width, height, colX, base + d, cols);
                 if (s > best) {
                     best = s;
                     bestD = d;
@@ -345,7 +388,7 @@ final class DotGridDecoder {
             }
             double wsum = 0, sum = 0;
             for (double d = bestD - 1; d <= bestD + 1; d += 0.5) {
-                double w = rowHit(mask, width, height, colX, base + d, n);
+                double w = rowHit(mask, width, height, colX, base + d, cols);
                 wsum += w;
                 sum += w * (base + d);
             }
@@ -371,13 +414,13 @@ final class DotGridDecoder {
     }
 
     private static double rowHit(boolean[] mask, int width, int height,
-                                 double[] colX, double cy, int n) {
+                                 double[] colX, double cy, int cols) {
         int iy = (int) Math.round(cy);
         if (iy < 0 || iy >= height) {
             return 0;
         }
         double sum = 0;
-        for (int mx = 0; mx < n; mx++) {
+        for (int mx = 0; mx < cols && mx < colX.length; mx++) {
             int ix = (int) Math.round(colX[mx]);
             if (ix >= 0 && ix < width) {
                 sum += mask[iy * width + ix] ? 1 : 0;
@@ -393,11 +436,11 @@ final class DotGridDecoder {
      */
     private static float[][] sampleLum(byte[] gray, int width, int height,
                                        double[] colX, double[] rowY, double p) {
-        int n = colX.length;
+        int rows = rowY.length, cols = colX.length;
         int r = Math.max(1, (int) Math.round(p * 0.35));
-        float[][] lum = new float[n][n];
-        for (int my = 0; my < n; my++) {
-            for (int mx = 0; mx < n; mx++) {
+        float[][] lum = new float[rows][cols];
+        for (int my = 0; my < rows; my++) {
+            for (int mx = 0; mx < cols; mx++) {
                 double sum = 0;
                 int cnt = 0;
                 int cx = (int) Math.round(colX[mx]);
@@ -437,9 +480,10 @@ final class DotGridDecoder {
     }
 
     /**
-     * DM 解码内核直解 × 四方向旋转（内核不做定位，需自行覆盖旋转）。
+     * DM 解码内核直解 × 方向旋转（内核不做定位，需自行覆盖旋转）。
+     * 矩形码旋转后尺寸不合法（内核 FormatException），仅方形尝试 4 方向。
      */
-    private static void tryKernelAllOrientations(boolean[][] mat, Decoder kernel,
+    private static void tryKernelAllOrientations(boolean[][] mat, boolean square, Decoder kernel,
                                                  Map<String, Integer> votes) {
         boolean[][] cur = mat;
         for (int rot = 0; rot < 4; rot++) {
@@ -452,6 +496,9 @@ final class DotGridDecoder {
                 }
             } catch (Exception ignored) {
                 // FormatException / ChecksumException：该方向/阈值不可解
+            }
+            if (!square) {
+                return;
             }
             cur = rotate90(cur);
         }

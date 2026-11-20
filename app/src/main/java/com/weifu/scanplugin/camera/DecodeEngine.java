@@ -177,6 +177,20 @@ class DecodeEngine {
         qrOpts.setTryDownscale(true);
         qrOpts.setTextMode(zxingcpp.BarcodeReader.TextMode.PLAIN);
         cppReaderQr = new zxingcpp.BarcodeReader(qrOpts);
+
+        // BOOL_CAST 二值透传 reader：输入已是 0/255 二值图，cpp 跳过二值化
+        // 直接定位解码。解决 LOCAL_AVERAGE 窗口≈短边/8 吞小码模块的问题
+        // （小 QR 整码落在 1~2 个窗口内被均值抹平，放大亦无解——真机
+        // 16:01 会话 cppSm 91s 全 miss 实证）。二值化由 Java 自适应阈值
+        // （win=25 固定窗口，对小码有效）完成，检测/解码交给 cpp
+        zxingcpp.BarcodeReader.Options binOpts = new zxingcpp.BarcodeReader.Options();
+        binOpts.setTryHarder(true);
+        binOpts.setTryRotate(true);
+        binOpts.setTryInvert(true);
+        binOpts.setTryDownscale(true);
+        binOpts.setTextMode(zxingcpp.BarcodeReader.TextMode.PLAIN);
+        binOpts.setBinarizer(zxingcpp.BarcodeReader.Binarizer.BOOL_CAST);
+        cppReaderQrBool = new zxingcpp.BarcodeReader(binOpts);
     }
 
     /**
@@ -415,7 +429,7 @@ class DecodeEngine {
         // （真机"特写无法识别"回归实证）。cpp 层 40~75ms 本就不是瓶颈，
         // ROI 收益集中在慢层级联
         long t0 = android.os.SystemClock.elapsedRealtime();
-        Result result = cppDecodeInRoi(grayToBitmap(gray, width, height), cppReader, roi);
+        Result result = cppDecodeInRoi(grayToBitmap(gray, width, height), cppReader, roi, "c1");
         long t1 = android.os.SystemClock.elapsedRealtime();
         Log.d(TAG, "cpp1 " + (t1 - t0) + "ms hit=" + (result != null));
         ScanFileLog.log("cpp1 " + (t1 - t0) + "ms hit=" + (result != null));
@@ -437,7 +451,7 @@ class DecodeEngine {
         // ===== 第 2 层：全局直方图二值化兜底（圆点 DM 专项，全分辨率）=====
         // DotPeen 圆点码的模块是孤立圆点，局部均值二值化（LOCAL_AVERAGE）在点间隙处
         // 易产生误判；GLOBAL_HISTOGRAM 按全图灰度分布取阈值，对圆点边缘响应不同
-        result = cppDecodeInRoi(grayToBitmap(gray, width, height), cppReaderGlobal, roi);
+        result = cppDecodeInRoi(grayToBitmap(gray, width, height), cppReaderGlobal, roi, "g1");
         if (result != null) {
             if (result.getBarcodeFormat() != com.google.zxing.BarcodeFormat.DATA_MATRIX) {
                 return result;
@@ -501,6 +515,11 @@ class DecodeEngine {
     private Result decodeCascade(byte[] gray, int width, int height, byte[] small, int sw, int sh, int factor) {
         Result result;
         frameCounter++;
+        // 级联软时限：miss 帧各层累计可达 1~3s（真机 12:59 会话实证），
+        // 有效分析帧率跌到 0.3~0.8fps——确认帧跟不上、用户体感"慢"。
+        // 尾部分层（aux/fullResRoi/cppDotProbe）超时即跳过，下帧补位；
+        // 首中即返回的层（main/cppSm/dg）不受限
+        long tCascade = android.os.SystemClock.elapsedRealtime();
         if (lastSuccessScale >= 2
                 && width / lastSuccessScale >= 120 && height / lastSuccessScale >= 120) {
             int s = lastSuccessScale;
@@ -516,18 +535,7 @@ class DecodeEngine {
             }
         }
 
-        byte[] workImg = small;
-        int workW = sw, workH = sh;
-        // 主尺度为 /2 图（decodeYuv 传入）：小码保细节且点距落入 (win,C) 参数族工作区间，
-        // 全分辨率 dot chains 实测只产出乱码误读且单帧 1~4s
-        ScanFileLog.log("main=/" + factor + " " + workW + "x" + workH
-                + " roiPhase=" + (frameCounter % 3));
-        result = decodeGrayDpm(workImg, workW, workH, true, frameCounter % 3);
-        if (result != null) {
-            return confirmCameraResult(result, "m" + factor);
-        }
-
-        // ===== 小码 cpp 探针层（cppSm，全格式 reader）=====
+        // ===== 小码 cpp 探针层（cppSm，全格式 reader）【前移到主链之前】=====
         // 关键教训（真机 15:20 日志 cpp2x 每帧 miss 根因复盘）：
         // 1) DPM 模式 cppReader 是 DM-only（喷砂 QR 误读史），QR 对 cpp 不可见
         //    ——必须用全格式专用 reader；
@@ -536,21 +544,62 @@ class DecodeEngine {
         //    局部对比度被均值抹平——放大并不能修复均值窗口吞模块问题，
         //    真正有效的是紧裁剪（decodeRoi 的 0.3×3 档窗口仅 ~40px）与
         //    全格式 reader 本身；
-        // 本层：原始 ROI（cppReaderQr）每帧探测 + ×2 放大（每 2 帧）覆盖
-        // 偏小码；ROI 内不裁剪、不依赖码居中。QR 非 DM 走跨帧 2 次确认
-        // （防喷砂伪造 QR 稳定误读直出，回退 15:13 的单次直出）
+        // 本层：原始 ROI（cppReaderQr）每帧探测 + 二值去噪探针（每帧）+ ×2
+        // 变体（隔帧）覆盖偏小码；ROI 内不裁剪、不依赖码居中。QR 非 DM 走
+        // 跨帧 2 次确认（防喷砂伪造 QR 稳定误读直出）。
+        // 【前移依据】16:49 真机日志：本层 40~190ms 即可命中小码，但排在
+        // 主链（miss 帧 2~3s）之后实际每 2~3 秒才跑一次，小码确认被拖到
+        // 1.5~6s。移到级联最前：每帧开头即探小码，命中直接短路整个级联
         if ((long) width * height <= 1_300_000L) {
             long tSm = android.os.SystemClock.elapsedRealtime();
             Result smallHit = cppDecode(grayToBitmap(gray, width, height), cppReaderQr);
+            if (smallHit == null) {
+                // BOOL_CAST 二值透传探针（每帧）：Java 固定 25px 窗口自适应阈值
+                // 保小码模块存活 + 连通域面积去噪清铝面纹理噪斑（开运算会连
+                // 细条码条/小模块一起抹掉，不可用——despeckle 只清 <8px 孤立
+                // 噪斑）+ cpp 检测器定位解码（tryInvert 覆盖暗底亮码极性）
+                byte[] binProbe = gray.clone();
+                ImagePreprocessor.adaptiveThreshold(binProbe, width, height,
+                        ImagePreprocessor.ADAPTIVE_WINDOW, ImagePreprocessor.ADAPTIVE_C);
+                ImagePreprocessor.despeckle(binProbe, width, height, 8);
+                smallHit = cppDecode(grayToBitmap(binProbe, width, height), cppReaderQrBool);
+            }
             if (smallHit == null && frameCounter % 2 == 0) {
                 Object[] up2x = ImagePreprocessor.cropAndScale(gray, width, height, 0.75f, 0.75f, 2);
                 smallHit = cppDecode(grayToBitmap((byte[]) up2x[0], (int) up2x[1], (int) up2x[2]), cppReaderQr);
+            }
+            if (smallHit == null && frameCounter % 2 == 1) {
+                // ×2 二值探针（隔帧）：中心 1/2 裁剪 ×2 放大后二值化——窗口随
+                // 倍率扩到 50px 保持相对覆盖，专攻全分辨率下模块 ≤2px 的极小码
+                Object[] up2x = ImagePreprocessor.cropAndScale(gray, width, height, 0.5f, 0.5f, 2);
+                byte[] binUp = (byte[]) up2x[0];
+                int upW = (int) up2x[1], upH = (int) up2x[2];
+                ImagePreprocessor.adaptiveThreshold(binUp, upW, upH, 50, ImagePreprocessor.ADAPTIVE_C);
+                ImagePreprocessor.despeckle(binUp, upW, upH, 16);
+                smallHit = cppDecode(grayToBitmap(binUp, upW, upH), cppReaderQrBool);
+                if (smallHit == null) {
+                    // 反色变体（暗底亮码）
+                    ImagePreprocessor.invert(binUp);
+                    smallHit = cppDecode(grayToBitmap(binUp, upW, upH), cppReaderQrBool);
+                }
             }
             long tSmDone = android.os.SystemClock.elapsedRealtime();
             ScanFileLog.log("cppSm " + (tSmDone - tSm) + "ms hit=" + (smallHit != null));
             if (smallHit != null) {
                 return confirmCameraResult(smallHit, "cppSm");
             }
+        }
+
+        byte[] workImg = small;
+        int workW = sw, workH = sh;
+        // 主尺度为 /2 图（decodeYuv 传入）：小码保细节且点距落入 (win,C) 参数族工作区间，
+        // 全分辨率 dot chains 实测只产出乱码误读且单帧 1~4s
+        ScanFileLog.log("main=/" + factor + " " + workW + "x" + workH
+                + " roiPhase=" + (frameCounter % 3));
+        result = decodeGrayDpm(workImg, workW, workH, true, frameCounter % 3,
+                null, tCascade + 900L);
+        if (result != null) {
+            return confirmCameraResult(result, "m" + factor);
         }
 
         int pitchEst = estimatePitch(gray, width, height);
@@ -590,7 +639,8 @@ class DecodeEngine {
             int upH = (int) up[2];
             ScanFileLog.log("upscale x" + scale + " crop=" + ratio + " " + upW + "x" + upH);
             result = decodeDotChainsParallel(upImg, upW, upH);
-            if (result == null) {
+            if (result == null
+                    && android.os.SystemClock.elapsedRealtime() - tCascade < 1100L) {
                 result = cppDotProbe(upImg, upW, upH);
             }
             if (result != null) {
@@ -598,7 +648,7 @@ class DecodeEngine {
             }
             // DotPeen 点阵网格直解兜底（点式 L 定位边场景：zxing 定位器无法定位，
             // 但网格采样直解内核可解——平板暗底点阵图实测根因）
-            Result dg = decodeDotGridLayer(gray, width, height);
+            Result dg = decodeDotGridLayer(gray, width, height, pitchEst);
             if (dg != null) {
                 return confirmCameraResult(dg, "dg");
             }
@@ -618,7 +668,8 @@ class DecodeEngine {
             aux = auxScales[frameCounter % auxScales.length];
         }
         ScanFileLog.log("aux=/" + aux);
-        if (aux != lastSuccessScale && width / aux >= 120 && height / aux >= 120) {
+        if (aux != lastSuccessScale && width / aux >= 120 && height / aux >= 120
+                && android.os.SystemClock.elapsedRealtime() - tCascade < 1200L) {
             byte[] img = ImagePreprocessor.downscale(gray, width, height, aux);
             result = decodeDotChainsParallel(img, width / aux, height / aux);
             if (result == null) {
@@ -632,14 +683,15 @@ class DecodeEngine {
         }
         // fullResRoi：2.76MP 多趟解码（真机实测为级联 2s 的主要构成之一），
         // 每 3 帧跑一次，其余帧跳过（省下的时间让有效帧率翻倍）
-        if (frameCounter % 3 == 0) {
+        if (frameCounter % 3 == 0
+                && android.os.SystemClock.elapsedRealtime() - tCascade < 900L) {
             Result f = confirmCameraResult(decodeFullResRoi(gray, width, height), "f");
             if (f != null) {
                 return f;
             }
         }
         // 第 4 层：DotPeen 点阵网格直解（点式 L 定位边专项兜底）
-        Result dg = decodeDotGridLayer(gray, width, height);
+        Result dg = decodeDotGridLayer(gray, width, height, pitchEst);
         if (dg != null) {
             return confirmCameraResult(dg, "dg");
         }
@@ -650,12 +702,20 @@ class DecodeEngine {
      * DotPeen 点阵网格直解层（DotGridDecoder）：像素预算控制
      * （>800px 侧先 /2 降采样，点距落入 3.5~60px 搜索区间即可）。
      */
-    private Result decodeDotGridLayer(byte[] gray, int width, int height) {
-        int factor = Math.max(width, height) > 800 ? 2 : 1;
+    private Result decodeDotGridLayer(byte[] gray, int width, int height, int pitchEst) {
+        // 点距感知降采样：pitchEst≤11 的帧再 /2 会把点距压到 3.5px 搜索下限
+        // 以下，连通域直接糊掉（真机 clean 码 pitchEst=5~9 时段 dg 全 miss
+        // 实证）——保持全分辨率直跑；DotGridDecoder 内部本就有"原尺寸失败
+        // 后 /2 重试"，两种点距区间都能覆盖
+        boolean smallPitch = pitchEst > 0 && pitchEst <= 11;
+        int factor = (!smallPitch && Math.max(width, height) > 800) ? 2 : 1;
         byte[] img = factor == 1 ? gray : ImagePreprocessor.downscale(gray, width, height, factor);
         Result r = DotGridDecoder.decode(img, width / factor, height / factor);
         if (r != null) {
             ScanFileLog.log("dotGrid hit: " + r.getText());
+        } else if ((frameCounter & 3) == 0) {
+            // miss 诊断（每 4 帧），暴露卡死阶段：质心数/点距/候选尺寸/对比度
+            ScanFileLog.log("dotGrid miss diag: " + DotGridDecoder.lastDiag);
         }
         return r;
     }
@@ -672,6 +732,7 @@ class DecodeEngine {
     private final zxingcpp.BarcodeReader cppReader;
     private final zxingcpp.BarcodeReader cppReaderGlobal;
     private final zxingcpp.BarcodeReader cppReaderQr;
+    private final zxingcpp.BarcodeReader cppReaderQrBool;
 
     private Result cppDecode(Bitmap bitmap, zxingcpp.BarcodeReader reader) {
         try {
@@ -694,15 +755,21 @@ class DecodeEngine {
      *
      * @param roi 取景框 {x0,y0,w,h}（旋转矫正后坐标），null=不过滤
      */
-    private Result cppDecodeInRoi(Bitmap bitmap, zxingcpp.BarcodeReader reader, int[] roi) {
+    private Result cppDecodeInRoi(Bitmap bitmap, zxingcpp.BarcodeReader reader, int[] roi, String tag) {
         try {
             java.util.List<zxingcpp.BarcodeReader.Result> results =
                     reader.read(bitmap, new android.graphics.Rect(), 0);
             if (results != null && !results.isEmpty()) {
+                int rejected = 0;
                 for (zxingcpp.BarcodeReader.Result rr : results) {
                     if (isCenterInRoi(rr.getPosition(), roi)) {
                         return toZxingResult(rr);
                     }
+                    rejected++;
+                }
+                if (rejected > 0) {
+                    // 框外码被过滤的证据（验证有效区域处理是否生效）
+                    ScanFileLog.log("cpp[" + tag + "] roi-filter rejected " + rejected + " code(s)");
                 }
             }
         } catch (Throwable t) {
@@ -1049,16 +1116,24 @@ class DecodeEngine {
      *                      原三档连跑是级联 2s 的主要构成之一）
      */
     private Result decodeGrayDpm(byte[] gray, int width, int height, boolean preDownscaled, int roiPhase) {
-        return decodeGrayDpm(gray, width, height, preDownscaled, roiPhase, null);
+        return decodeGrayDpm(gray, width, height, preDownscaled, roiPhase, null, Long.MAX_VALUE);
+    }
+
+    private Result decodeGrayDpm(byte[] gray, int width, int height, boolean preDownscaled, int roiPhase,
+                                 java.util.List<Result> collectList) {
+        return decodeGrayDpm(gray, width, height, preDownscaled, roiPhase, collectList, Long.MAX_VALUE);
     }
 
     /**
      * @param collectList 非 null = 收集模式（相册单次解码）：全部变体的命中都加入
      *                    列表并继续跑后续变体，不提前返回；调用方做多数派投票。
      *                    null = 首中即返回（相机帧，低延迟优先）
+     * @param deadline    绝对时限（elapsedRealtime，相机帧传 tCascade+预算）：
+     *                    超时跳过收尾阶段（③均衡变体块、ROI 放大档），
+     *                    下帧补位；相册路径传 Long.MAX_VALUE 不限
      */
     private Result decodeGrayDpm(byte[] gray, int width, int height, boolean preDownscaled, int roiPhase,
-                                 java.util.List<Result> collectList) {
+                                 java.util.List<Result> collectList, long deadline) {
         int dw, dh;
         byte[] small;
         if (preDownscaled) {
@@ -1154,7 +1229,8 @@ class DecodeEngine {
         // 验证过的组合，这批变体每帧跑会把级联拖到 2s（真机实测）。
         // 相册单次解码（roiPhase<0）必须全量执行：同一张图重复识别结果必须一致，
         // 不能受相机流 frameCounter 相位影响（真机"同图多次扫描结果不一致"根因之一）
-        if (roiPhase < 0 || (frameCounter & 1) == 0) {
+        if (roiPhase < 0 || ((frameCounter & 1) == 0
+                && android.os.SystemClock.elapsedRealtime() < deadline)) {
             byte[] binRaw = enhanced.clone();
             ImagePreprocessor.adaptiveThreshold(binRaw, dw, dh);
 
@@ -1226,6 +1302,10 @@ class DecodeEngine {
             return null;
         }
         int idx = roiPhase % 3;
+        if (android.os.SystemClock.elapsedRealtime() >= deadline) {
+            // 主链预算耗尽：跳过本帧 ROI 放大档（单档数百 ms），下帧轮转补位
+            return null;
+        }
         return decodeRoi(gray, width, height,
                 idx == 0 ? 0.5f : idx == 1 ? 0.3f : 0.4f,
                 idx == 1 ? 3 : 2, null);
@@ -1276,14 +1356,9 @@ class DecodeEngine {
         // 否则局部均值跟随圆点自适应会把点"吃掉"
         ImagePreprocessor.adaptiveThreshold(roiBin, roiW, roiH,
                 ImagePreprocessor.ADAPTIVE_WINDOW * scale, ImagePreprocessor.ADAPTIVE_C);
-        r = acceptDpmJava(tryDecode(new GrayscaleSource(roiBin, roiW, roiH), false));
-        if (r != null) {
-            if (collectList != null) collectList.add(r); else return r;
-        }
-
-        byte[] roiInv = roiBin.clone();
-        ImagePreprocessor.invert(roiInv);
-        r = acceptDpmJava(tryDecode(new GrayscaleSource(roiInv, roiW, roiH), false));
+        // 二值图统一走 cpp BOOL_CAST 优先（"全 cpp 识别"），Java 兜底；
+        // tryInvert/兜底内部已覆盖反色，无需独立反色站点
+        r = acceptDpmJava(tryDecodeBinWithInvert(roiBin, roiW, roiH));
         if (r != null) {
             if (collectList != null) collectList.add(r); else return r;
         }
@@ -1293,21 +1368,7 @@ class DecodeEngine {
         ImagePreprocessor.fillHoles(roiDot, roiW, roiH);
         ImagePreprocessor.denoise(roiDot, roiW, roiH);
         ImagePreprocessor.closeMorph(roiDot, roiW, roiH, 2);
-        r = acceptDpmJava(tryDecode(new GrayscaleSource(roiDot, roiW, roiH), false));
-        if (r != null) {
-            if (collectList != null) collectList.add(r); else return r;
-        }
-
-        // 点链二值图交 cpp（GLOBAL_HISTOGRAM 读 0/255 图即按阈值分离，
-        // 低对比/明暗不均场景下 cpp 对二值图的定位鲁棒性优于灰度图）
-        rCpp = cppDecode(grayToBitmap(roiDot, roiW, roiH), cppReaderGlobal);
-        if (rCpp != null) {
-            if (collectList != null) collectList.add(rCpp); else return rCpp;
-        }
-
-        byte[] roiDotInv = roiDot.clone();
-        ImagePreprocessor.invert(roiDotInv);
-        r = acceptDpmJava(tryDecode(new GrayscaleSource(roiDotInv, roiW, roiH), false));
+        r = acceptDpmJava(tryDecodeBinWithInvert(roiDot, roiW, roiH));
         if (r != null) {
             if (collectList != null) collectList.add(r); else return r;
         }
@@ -1471,10 +1532,17 @@ class DecodeEngine {
         ImagePreprocessor.denoise(bin, width, height);
         if (Thread.currentThread().isInterrupted()) return null;
         ImagePreprocessor.closeMorph(bin, width, height);
+        // cpp 优先（"全 cpp 识别"）：二值图 BOOL_CAST 透传，cpp 检测器/解码器
+        // 强于 Java（且规避 Java 链的短数字误读）。zxing-cpp read() 线程安全，
+        // 可在并行链中直接调用；Java 作为链内兜底
+        Result r = cppDecode(grayToBitmap(bin, width, height), cppReaderQrBool);
+        if (r != null) return r;
         MultiFormatReader local = newLocalReader();
-        Result r = tryDecodeWith(local, bin, width, height);
+        r = tryDecodeWith(local, bin, width, height);
         if (r != null) return r;
         ImagePreprocessor.closeMorph(bin, width, height);
+        r = cppDecode(grayToBitmap(bin, width, height), cppReaderQrBool);
+        if (r != null) return r;
         return tryDecodeWith(local, bin, width, height);
     }
 
@@ -1531,9 +1599,20 @@ class DecodeEngine {
      * 圆点 DM 二值变体尝试：GlobalHist/Hybrid 二值器 × 正/反色（Java 引擎）。
      * 同一数据换二值器无拷贝开销，临界质量二值图的成功率明显提升。
      */
+    /**
+     * 二值图统一解码出口（"全 cpp 识别"主体）：
+     * 1) cpp BOOL_CAST 透传优先——cpp 检测器/解码器强于 Java，tryInvert 已
+     *    覆盖正反色，无需手动反色重试；
+     * 2) Java zxing 兜底（GlobalHistogram/Hybrid × 正反色四路）——保留点式
+     *    DM 场景的既有容错，cpp 漏检时补位。
+     */
     private Result tryDecodeBinWithInvert(byte[] bin, int width, int height) {
+        Result r = cppDecode(grayToBitmap(bin, width, height), cppReaderQrBool);
+        if (r != null) {
+            return r;
+        }
         GrayscaleSource source = new GrayscaleSource(bin, width, height);
-        Result r = tryDecode(source, false);
+        r = tryDecode(source, false);
         if (r != null) {
             return r;
         }
