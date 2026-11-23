@@ -114,8 +114,10 @@ public class UpdateManager {
 				PackageInfo pi = mContext.getPackageManager().getPackageInfo(mContext.getPackageName(), PackageManager.GET_CONFIGURATIONS);
 				// 当前软件版本号
 				int versionCode = pi.versionCode;
-				if (versionCode != info.getVersionCode()) {
-					// 如果当前版本号不等于服务端版本号,则弹出提示更新对话框
+				// 仅当本地版本低于服务端才提示升级：原先用 != 判断，
+				// 本地比服务器新（如测试版 2.0.5 vs 线上 1.0.7）也会弹升级框
+				if (versionCode < info.getVersionCode()) {
+					// 如果当前版本号低于服务端版本号,则弹出提示更新对话框
 					showUpdateDialog();
 				}
 			} catch (NameNotFoundException e) {
