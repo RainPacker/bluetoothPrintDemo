@@ -34,6 +34,7 @@
         android:usesCleartextTraffic="true"
         tools:targetApi="m">
         <uses-library android:name="com.symbol.emdk" android:required="false"/>
+        <!-- 开屏广告屏：完整刷一轮油漆到全彩（2s），随后跳主屏 -->
         <activity android:name=".SplashActivity"  android:exported="true"  >
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -41,6 +42,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- 主屏：刷油漆动画进度绑定 WebView 真实加载进度（onProgressChanged 驱动） -->
         <activity android:name=".MainActivity"  android:windowSoftInputMode="adjustPan"  ></activity>
         <!-- 【无感替换】旧 MyScan 扫码页已删除，由 ScanPlugin 的 ScanCameraActivity 替代 -->
         <!-- 新扫码插件相机页：方向锁定策略——Manifest 用 unspecified（尊重系统自动旋转开关，

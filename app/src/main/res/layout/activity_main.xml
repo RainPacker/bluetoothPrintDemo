@@ -8,18 +8,19 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- 统一加载动画遮罩：白底 + 居中"刷油漆"logo（与开屏一致），
-         WebView 加载完成（progress=100）由 MainActivity 整体隐藏 -->
+    <!-- 主屏加载动画遮罩：白底 + 居中抖音风"两颗小球"弹跳动画，
+         WebView 加载完成（progress=100）由 MainActivity 整体隐藏。
+         开屏仍为"刷油漆"动画——广告展示与内容加载两种风格区分 -->
     <FrameLayout
         android:id="@+id/loading_overlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="#FFFFFF">
 
-        <com.weifu.app.ui.custom.PaintLogoView
-            android:id="@+id/loading_logo"
-            android:layout_width="200dp"
-            android:layout_height="90dp"
+        <com.weifu.app.ui.custom.DouyinBallsView
+            android:id="@+id/loading_balls"
+            android:layout_width="120dp"
+            android:layout_height="48dp"
             android:layout_gravity="center"
             android:contentDescription="@string/logDesc" />
     </FrameLayout>

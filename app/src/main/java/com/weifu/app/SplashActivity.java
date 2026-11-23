@@ -26,6 +26,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.weifu.action.PermissionsResultAction;
 import com.weifu.app.ui.custom.HighlightingLogoView;
+import com.weifu.app.ui.custom.PaintLogoView;
 import com.weifu.utils.PermissionsManager;
 
 import java.util.Objects;
@@ -81,7 +82,10 @@ public class SplashActivity extends AppCompatActivity {
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
         Objects.requireNonNull(getSupportActionBar()).hide();
         setContentView(R.layout.act_spread_layout);
-        // 加载动画由 PaintLogoView 自管理（附着即刷、脱离即停）
+        // 加载动画由 PaintLogoView 自管理（附着即刷、脱离即停）。
+        // 单轮模式：2s 停留期恰好刷完一轮全彩（level 停在 10000），
+        // 跳转瞬间油漆到位，不会闪回重头
+        ((PaintLogoView) findViewById(R.id.imageView2)).setOneShot(true);
    /*     // 获取ImageView
         ImageView loadingLogo = findViewById(R.id.imageView2);
 

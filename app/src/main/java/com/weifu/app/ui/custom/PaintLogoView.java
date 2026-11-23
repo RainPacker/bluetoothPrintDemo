@@ -13,10 +13,11 @@ import com.weifu.app.R;
 
 /**
  * "刷油漆" logo 加载动画（开屏/主屏统一加载指示）：
- * 三层叠加——底漆（logo 黑色剪影，未刷区域）+ 湿漆层（半透明，
- * 恒铺满整图）+ 成品层（全彩 logo，单条边界从左向右推进）。
- * 视觉上是"整面墙已上湿漆，刷子滚过的地方变干变实"——单光源
- * 单刷子，成品边界即唯一的光源边界。
+ * 三层叠加——底漆（logo 黑色剪影）+ 湿漆层（灰白半透明，恒铺满
+ * 整图）+ 成品层（全彩 logo，单条边界从左向右推进）。
+ * 未刷区域 = 黑剪影 + 灰白湿漆 = 灰白剪影（非彩色）；
+ * 视觉上是"整面墙已上灰白湿漆，刷子滚过的地方变干变彩色"——
+ * 单光源单刷子，成品边界即唯一的光源边界。
  * 生命周期自管理：附着窗口自动开刷、脱离自动取消、VISIBLE/GONE
  * 切换自动启停——使用方只需控制 visibility，无需动画代码。
  */
@@ -51,15 +52,19 @@ public class PaintLogoView extends AppCompatImageView {
         Drawable dim = layers.findDrawableByLayerId(R.id.layer_dim);
         dim.setTint(0xFF000000);
         dim.setAlpha(90);
-        // 湿漆层恒铺满整图（level 固定 10000）：整面像已上未干的湿漆，
-        // 只有成品层一条边界从左向右推进——"刷子滚过的地方变干变实"，
-        // 单光源单刷子，避免两条同步边界造成"双刷子"观感
-        layers.findDrawableByLayerId(R.id.layer_half).setAlpha(140);
-        layers.findDrawableByLayerId(R.id.layer_half).setLevel(10000);
+        // 湿漆层染灰白、恒铺满整图（level 固定 10000）：未刷区域 =
+        // 黑剪影底漆 + 灰白半透明湿漆 = 灰白剪影（非彩色），
+        // 成品层单条边界从左向右推进——"刷子滚过的地方变干变彩色"
+        Drawable half = layers.findDrawableByLayerId(R.id.layer_half);
+        half.setTint(0xFF9E9E9E);
+        half.setAlpha(140);
+        half.setLevel(10000);
 
         animator = ValueAnimator.ofFloat(0f, 1f);
-        // 2000ms 一轮：与开屏 2s 停留时长对齐
-        animator.setDuration(2000);
+        // 1900ms 一轮：略短于开屏 2s 停留时长——动画从 onAttachedToWindow
+        // 起跳，比 SplashActivity 的 2s 跳转计时晚几十 ms，留出余量
+        // 确保 2s 跳转时刻油漆已 100% 刷完（全彩定格）
+        animator.setDuration(1900);
         animator.setRepeatCount(ValueAnimator.INFINITE);
         animator.setRepeatMode(ValueAnimator.RESTART);
         animator.setInterpolator(new LinearInterpolator());
@@ -71,6 +76,17 @@ public class PaintLogoView extends AppCompatImageView {
                         .setLevel((int) (f * 10000));
             }
         });
+    }
+
+    /**
+     * 单轮模式（广告屏用）：动画只播一轮、结束停在全彩（level=10000），
+     * 不再无限循环——与 SplashActivity 2s 停留时长对齐，跳转瞬间
+     * 油漆恰好刷完，不会闪回重头。须在动画启动前（附着窗口前）调用。
+     */
+    public void setOneShot(boolean oneShot) {
+        if (animator != null) {
+            animator.setRepeatCount(oneShot ? 0 : ValueAnimator.INFINITE);
+        }
     }
 
     @Override

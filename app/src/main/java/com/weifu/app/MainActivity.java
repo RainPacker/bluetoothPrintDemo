@@ -54,7 +54,7 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.content.FileProvider;
 
 import com.inuker.bluetooth.library.BluetoothClient;
-import com.weifu.app.ui.custom.PaintLogoView;
+import com.weifu.app.ui.custom.DouyinBallsView;
 import com.mingle.widget.ShapeLoadingDialog;
 import com.symbol.emdk.EMDKManager;
 import com.symbol.emdk.barcode.BarcodeManager;
@@ -116,7 +116,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private IMyBinder printerBinder;
 //    private BluetoothStateReceiver mBluetoothStateReceiver;
     private View loadingOverlay;
-    private PaintLogoView loadingLogo;
+    private DouyinBallsView loadingBalls;
     BluetoothClient mClient;
     private ShapeLoadingDialog shapeLoadingDialog;
     private JsBridge jsBridge;
@@ -157,15 +157,16 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         setAndroidNativeLightStatusBar(this, true);
 //        getWindow().setNavigationBarColor(Color.parseColor("#004098"));
         super.onCreate(savedInstanceState);
-        // 测试模式跳过版本检查：模拟器/本地测试无法访问生产 version_url，
-        // 几秒后网络超时会从后台 MainActivity 弹出错误 Dialog 覆盖前台扫码页，
-        // 造成"扫码页自己旋转 + toast 提示"的假象
-        // 版本升级检查（生产逻辑，无条件执行；UpdateManager 已含 5s 网络超时保护）
-        new Thread(()->{
-            Looper.prepare();
-            updateApk();
-            Looper.loop();
-        }).start();
+        // 测试模式跳过版本检查：本地 test.html 验证加载动画时不应请求生产
+        // version_url——升级弹窗（versionCode 不等即弹，含"较旧"误判）会
+        // 盖住主屏，卡住加载流程，干扰测试
+        if (!LOAD_TEST_PAGE) {
+            new Thread(()->{
+                Looper.prepare();
+                updateApk();
+                Looper.loop();
+            }).start();
+        }
 
        // initReceiver();
      //   getPermission();
@@ -304,7 +305,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 //        shapeLoadingDialog = new ShapeLoadingDialog(this);
 //        shapeLoadingDialog.setLoadingText("加载中...");
         loadingOverlay = findViewById(R.id.loading_overlay);
-        loadingLogo = findViewById(R.id.loading_logo);
+        loadingBalls = findViewById(R.id.loading_balls);
 
 
 
@@ -844,7 +845,7 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         @Override
         public void onProgressChanged(WebView view, int newProgress) {
             super.onProgressChanged(view, newProgress);
-            Log.d(TAG, "newProgress:" + newProgress);
+            Log.i(TAG, "newProgress:" + newProgress);
             // 统一"刷油漆"加载动画：加载中显示（含后续页面跳转/二次 loadUrl，
             // 修复原先首屏 GONE 后再无 VISIBLE 的缺陷），加载完成隐藏。
             // 测试模式下本地页秒开，隐藏由 1s 模拟延迟统一控制（见 onCreate）
@@ -857,15 +858,16 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     }
 
     /**
-     * 统一加载动画开关：白底遮罩 + 居中"刷油漆"logo（与开屏一致）。
-     * PaintLogoView 的动画随自身 VISIBLE/GONE 自动启停
+     * 统一加载动画开关：白底遮罩 + 居中抖音风"两颗小球"弹跳动画。
+     * DouyinBallsView 的动画随自身 VISIBLE/GONE 自动启停
      */
     private void setLoadingVisible(boolean visible) {
+        Log.i(TAG, "setLoadingVisible: " + visible);
         if (loadingOverlay != null) {
             loadingOverlay.setVisibility(visible ? View.VISIBLE : View.GONE);
         }
-        if (loadingLogo != null) {
-            loadingLogo.setVisibility(visible ? View.VISIBLE : View.GONE);
+        if (loadingBalls != null) {
+            loadingBalls.setVisibility(visible ? View.VISIBLE : View.GONE);
         }
     }
 
