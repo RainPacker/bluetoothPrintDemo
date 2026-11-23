@@ -105,8 +105,10 @@ public class UpdateManager {
 		info = getVersionInfoFromServer(version_url);
 		if (info != null) {
 			downloadURL = info.getDownloadURL();
-			isForce = "1".equals(info.getIsForce());
-			Log.d(TAG, "checkUpdate: 强制更新=" + info.getIsForce());
+			// 强制升级判定：兼容 "1"/"true"（大小写不敏感）；标签缺失/空/其他值均为 false（缺省可选升级）
+			String forceRaw = info.getIsForce();
+			isForce = "1".equals(forceRaw) || "true".equalsIgnoreCase(forceRaw == null ? "" : forceRaw.trim());
+			Log.d(TAG, "checkUpdate: 强制更新=" + isForce);
 			try {
 				// 获取当前软件包信息
 				PackageInfo pi = mContext.getPackageManager().getPackageInfo(mContext.getPackageName(), PackageManager.GET_CONFIGURATIONS);

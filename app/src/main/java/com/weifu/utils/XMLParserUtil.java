@@ -49,7 +49,15 @@ public class XMLParserUtil {
 					} else if ("apkName".equals(parser.getName())) {
 						info.setApkName(parser.nextText());
 					} else if ("versionCode".equals(parser.getName())) {
-						info.setVersionCode(Integer.parseInt(parser.nextText()));
+						// 容错：格式异常（空/非数字）按 0 处理——直接 parseInt 抛出的
+						// NumberFormatException 不在下方 catch 范围，会让升级检查线程崩溃
+						String codeText = parser.nextText();
+						try {
+							info.setVersionCode(Integer.parseInt(codeText.trim()));
+						} catch (NumberFormatException nfe) {
+							nfe.printStackTrace();
+							info.setVersionCode(0);
+						}
 					} else if ("isForce".equals(parser.getName())) {
 						info.setIsForce(parser.nextText());
 					}
