@@ -47,7 +47,6 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -55,7 +54,7 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.content.FileProvider;
 
 import com.inuker.bluetooth.library.BluetoothClient;
-import com.mingle.widget.LoadingView;
+import com.weifu.app.ui.custom.PaintLogoView;
 import com.mingle.widget.ShapeLoadingDialog;
 import com.symbol.emdk.EMDKManager;
 import com.symbol.emdk.barcode.BarcodeManager;
@@ -116,10 +115,10 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     ValueCallback<Uri[]> mFilePathCallbackArray;
     private IMyBinder printerBinder;
 //    private BluetoothStateReceiver mBluetoothStateReceiver;
-    private ProgressBar progressBar;
+    private View loadingOverlay;
+    private PaintLogoView loadingLogo;
     BluetoothClient mClient;
     private ShapeLoadingDialog shapeLoadingDialog;
-    private LoadingView loadingView;
     private JsBridge jsBridge;
 
     /**
@@ -288,15 +287,24 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         // 测试模式：true 加载本地扫码测试页，false 加载生产 H5
         if (LOAD_TEST_PAGE) {
             webView.loadUrl("file:///android_asset/test.html");
+            // 本地页秒开，progress 瞬时到 100，加载动画一闪而过——
+            // 模拟 1s 网络加载延迟，便于验证统一加载动画效果
+            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (!isFinishing() && !isDestroyed()) {
+                        setLoadingVisible(false);
+                    }
+                }
+            }, 1000L);
         } else {
             // 这里填你需要打包的 H5 页面链接
             webView.loadUrl(LOADRL);
         }
 //        shapeLoadingDialog = new ShapeLoadingDialog(this);
 //        shapeLoadingDialog.setLoadingText("加载中...");
-        progressBar = findViewById(R.id.progress_bar);
-        progressBar.setVisibility(View.VISIBLE);
-        loadingView = findViewById(R.id.loadView);
+        loadingOverlay = findViewById(R.id.loading_overlay);
+        loadingLogo = findViewById(R.id.loading_logo);
 
 
 
@@ -837,15 +845,27 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         public void onProgressChanged(WebView view, int newProgress) {
             super.onProgressChanged(view, newProgress);
             Log.d(TAG, "newProgress:" + newProgress);
-            // 进行进度条更新
-            if (newProgress == PROCESS_BAR_MAX) {
-              //  shapeLoadingDialog.dismiss();
-
-                progressBar.setVisibility(View.GONE);
-                loadingView.setVisibility(View.GONE);
+            // 统一"刷油漆"加载动画：加载中显示（含后续页面跳转/二次 loadUrl，
+            // 修复原先首屏 GONE 后再无 VISIBLE 的缺陷），加载完成隐藏。
+            // 测试模式下本地页秒开，隐藏由 1s 模拟延迟统一控制（见 onCreate）
+            if (LOAD_TEST_PAGE) {
+                setLoadingVisible(true);
+            } else {
+                setLoadingVisible(newProgress < PROCESS_BAR_MAX);
             }
-            progressBar.setProgress(newProgress);
-            // 如果想展示加载动画，则增加一个drawable布局后，在onCreate时展示，在progress=100时View.GONE即可
+        }
+    }
+
+    /**
+     * 统一加载动画开关：白底遮罩 + 居中"刷油漆"logo（与开屏一致）。
+     * PaintLogoView 的动画随自身 VISIBLE/GONE 自动启停
+     */
+    private void setLoadingVisible(boolean visible) {
+        if (loadingOverlay != null) {
+            loadingOverlay.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
+        if (loadingLogo != null) {
+            loadingLogo.setVisibility(visible ? View.VISIBLE : View.GONE);
         }
     }
 

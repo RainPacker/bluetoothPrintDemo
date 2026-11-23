@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 开屏 logo "刷油漆"加载动画（三层）：
+     底层 layer_dim：底漆——logo 黑色剪影（低透明度），覆盖整图（未刷区域也有颜色）
+     中层 layer_half：湿漆层——半透明 logo，恒铺满整图（level 固定 10000）
+     上层 layer_full：成品——全彩 logo，唯一动画层，单条边界从左向右推进
+     视觉：整面已上湿漆，刷子滚过的地方"变干变实"——单光源单刷子 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item android:id="@+id/layer_dim">
+        <bitmap
+            android:src="@drawable/logo_00b09c96"
+            android:gravity="fill"
+            android:tileMode="disabled" />
+    </item>
+
+    <item android:id="@+id/layer_half">
+        <clip
+            android:clipOrientation="horizontal"
+            android:gravity="start">
+            <bitmap
+                android:src="@drawable/logo_00b09c96"
+                android:gravity="fill"
+                android:tileMode="disabled" />
+        </clip>
+    </item>
+
+    <item android:id="@+id/layer_full">
+        <clip
+            android:clipOrientation="horizontal"
+            android:gravity="start">
+            <bitmap
+                android:src="@drawable/logo_00b09c96"
+                android:gravity="fill"
+                android:tileMode="disabled" />
+        </clip>
+    </item>
+</layer-list>

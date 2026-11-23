@@ -1,7 +1,6 @@
 package com.weifu.app;
 
 import android.animation.ObjectAnimator;
-import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
@@ -82,6 +81,7 @@ public class SplashActivity extends AppCompatActivity {
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
         Objects.requireNonNull(getSupportActionBar()).hide();
         setContentView(R.layout.act_spread_layout);
+        // 加载动画由 PaintLogoView 自管理（附着即刷、脱离即停）
    /*     // 获取ImageView
         ImageView loadingLogo = findViewById(R.id.imageView2);
 
@@ -122,8 +122,6 @@ public class SplashActivity extends AppCompatActivity {
         },2000);
     }
 
-
- 
     /**
      * 跳转主界面
      */
@@ -155,6 +153,7 @@ public class SplashActivity extends AppCompatActivity {
 
         // 移除延迟函数
         handler.removeCallbacks(null);
+        // 加载动画由 PaintLogoView 自管理（脱离窗口自动取消），无需处理
 
         super.onDestroy();
     }
