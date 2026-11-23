@@ -75,6 +75,19 @@ class DecodeEngine {
     private static final float AUTO_ZOOM_MAX = 3.0f;
     private static final long AUTO_ZOOM_COOLDOWN_MS = 1500;
 
+    // ===== QR 智能渐进变焦（微信式：持续未识别 → 逐级放大试扫远处小码）=====
+    // 首次未识别时间：0=已重置（识别成功/用户手动缩放后重新计时）
+    private long qrNoResultSinceMs = 0;
+    // 上次升档时间
+    private long qrLastStepMs = 0;
+    // 当前 QR 目标倍率（与 Activity 实际倍率同步起点，只升不降）
+    private float qrZoomRatio = 1.0f;
+    // 数码 zoom 上限 4x：QR 对插值容忍高于 DPM 点阵，超过 4x 画质衰减识别率反降
+    private static final float QR_ZOOM_MAX = 4.0f;
+    private static final float QR_ZOOM_STEP = 0.5f;
+    // 升档间隔：每档停留 1.2s 给 AF 收敛 + 多帧尝试
+    private static final long QR_ZOOM_STEP_MS = 1200;
+
     void setZoomListener(ZoomRequestListener l) {
         this.zoomListener = l;
     }
@@ -127,6 +140,58 @@ class DecodeEngine {
                 l.onZoomRequest(1.0f);
             }
         }
+    }
+
+    /** QR 智能变焦：Activity 应用初始/记忆倍率后同步起点（解码开始前调用） */
+    void initQrZoom(float startRatio) {
+        qrZoomRatio = Math.max(1.0f, Math.min(QR_ZOOM_MAX, startRatio));
+    }
+
+    /** 用户手动捏合缩放：用户接管变焦，重置未识别计时（重新观察 1.2s 再考虑升档） */
+    void notifyUserZoom() {
+        qrNoResultSinceMs = 0;
+    }
+
+    /** QR 识别成功：重置计时；已放大时请求回 1.0（连续模式扫下一个码从全景视野开始） */
+    private void onQrDecoded(long now) {
+        qrNoResultSinceMs = 0;
+        qrLastStepMs = now;
+        if (qrZoomRatio > 1.0f) {
+            qrZoomRatio = 1.0f;
+            ZoomRequestListener l = zoomListener;
+            if (l != null) {
+                l.onZoomRequest(1.0f);
+            }
+        }
+    }
+
+    /**
+     * QR 渐进变焦决策（仅 QR 模式解码线程，cpp1 未命中处调用）：
+     * 持续 QR_ZOOM_STEP_MS 未识别 → 升 0.5 档（上限 4x）再试——远处小码
+     * 放大后模块像素变大，可解码性显著提升（微信"扫不到就自动放大"同款策略）；
+     * 识别成功/用户捏合缩放即重置计时。升档只升不降，回 1.0 唯一路径是识别成功。
+     */
+    private void handleQrAutoZoom(long now) {
+        ZoomRequestListener l = zoomListener;
+        if (l == null) {
+            return;
+        }
+        if (qrNoResultSinceMs == 0) {
+            qrNoResultSinceMs = now;
+            return;
+        }
+        if (now - qrNoResultSinceMs < QR_ZOOM_STEP_MS
+                || now - qrLastStepMs < QR_ZOOM_STEP_MS) {
+            return;
+        }
+        if (qrZoomRatio >= QR_ZOOM_MAX) {
+            return; // 已到上限，保持最大倍率持续尝试
+        }
+        qrZoomRatio = Math.min(QR_ZOOM_MAX, qrZoomRatio + QR_ZOOM_STEP);
+        qrLastStepMs = now;
+        Log.i(TAG, "qr zoom req " + qrZoomRatio);
+        ScanFileLog.log("qr zoom req " + qrZoomRatio);
+        l.onZoomRequest(qrZoomRatio);
     }
 
     DecodeEngine(boolean dpmMode, Set<String> formats) {
@@ -436,6 +501,9 @@ class DecodeEngine {
         if (result != null) {
             // 高置信度格式直出；DM 走文本级跨帧确认（未确认时继续后续层级）
             if (result.getBarcodeFormat() != com.google.zxing.BarcodeFormat.DATA_MATRIX) {
+                if (!dpmMode) {
+                    onQrDecoded(android.os.SystemClock.elapsedRealtime());
+                }
                 return result;
             }
             Result confirmed = confirmCameraResult(result, "c1");
@@ -445,6 +513,8 @@ class DecodeEngine {
         }
 
         if (!dpmMode) {
+            // QR 模式 cpp1 未命中：渐进变焦决策（远处小码 → 逐级放大试扫）
+            handleQrAutoZoom(android.os.SystemClock.elapsedRealtime());
             return null;
         }
 

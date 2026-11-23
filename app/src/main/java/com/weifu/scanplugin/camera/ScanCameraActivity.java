@@ -113,6 +113,7 @@ public class ScanCameraActivity extends AppCompatActivity {
     private volatile Camera camera;
     private ProcessCameraProvider cameraProvider;
     private DpmImageAnalyzer analyzer;
+    private DecodeEngine decodeEngine;
     private ExecutorService cameraExecutor;
     private ToneGenerator toneGenerator;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -336,6 +337,11 @@ public class ScanCameraActivity extends AppCompatActivity {
                 newRatio = Math.max(state.getMinZoomRatio(),
                         Math.min(state.getMaxZoomRatio(), newRatio));
                 camera.getCameraControl().setZoomRatio(newRatio);
+                // 用户接管变焦：通知引擎重置未识别计时，捏合后至少观察
+                // 1.2s 再考虑自动升档（手动值优先，不与自动变焦打架）
+                if (decodeEngine != null) {
+                    decodeEngine.notifyUserZoom();
+                }
                 return true;
             }
         });
@@ -369,27 +375,27 @@ public class ScanCameraActivity extends AppCompatActivity {
         if (cameraExecutor == null) {
             cameraExecutor = Executors.newSingleThreadExecutor();
             final ScanPluginConfig config = pendingConfig != null ? pendingConfig : new ScanPluginConfig();
-            DecodeEngine decodeEngine = new DecodeEngine(dpmMode, config.getFormats());
-            // 自动变焦（微信式）：解码器检测到小点距（码远/小）→ 光学放大推高
-            // 点距进甜蜜区；CameraControl 线程安全，回调直接在解码线程调用。
+            decodeEngine = new DecodeEngine(dpmMode, config.getFormats());
+            // 自动变焦（微信式）：
+            // - DPM：解码器检测到小点距（码远/小）→ 光学放大推高点距进甜蜜区；
+            // - QR：持续未识别 → 渐进升档放大试扫远处小码（handleQrAutoZoom）。
+            // CameraControl 线程安全，回调直接在解码线程调用。
             // 与双指缩放共用 camera 状态，手动缩放覆盖自动值（用户最后操作优先）
-            if (dpmMode) {
-                decodeEngine.setZoomListener(target -> {
-                    Camera cam = camera;
-                    if (cam == null) {
-                        return;
-                    }
-                    // 目标与当前倍率一致（含手动缩放先到位）时跳过，避免无谓的
-                    // 对焦重建（回退 1.0 建议若用户已手动调回也在此拦截）
-                    androidx.camera.core.ZoomState st =
-                            cam.getCameraInfo().getZoomState().getValue();
-                    if (st != null && Math.abs(st.getZoomRatio() - target) < 0.05f) {
-                        return;
-                    }
-                    cam.getCameraControl().setZoomRatio(target);
-                    ScanFileLog.log("zoom applied " + target);
-                });
-            }
+            decodeEngine.setZoomListener(target -> {
+                Camera cam = camera;
+                if (cam == null) {
+                    return;
+                }
+                // 目标与当前倍率一致（含手动缩放先到位）时跳过，避免无谓的
+                // 对焦重建（回退 1.0 建议若用户已手动调回也在此拦截）
+                androidx.camera.core.ZoomState st =
+                        cam.getCameraInfo().getZoomState().getValue();
+                if (st != null && Math.abs(st.getZoomRatio() - target) < 0.05f) {
+                    return;
+                }
+                cam.getCameraControl().setZoomRatio(target);
+                ScanFileLog.log("zoom applied " + target);
+            });
             // DPM 模式提高帧处理率：刻印码识别依赖多帧概率累积，200ms 节流（5fps）不足；
             // 文本级跨帧确认需 2 次命中，节流间隔直接决定确认延迟下限
             int intervalMs = dpmMode ? Math.min(80, config.getFrameIntervalMs()) : config.getFrameIntervalMs();
@@ -448,6 +454,21 @@ public class ScanCameraActivity extends AppCompatActivity {
             cameraProvider.unbindAll();
             camera = cameraProvider.bindToLifecycle(this, selector, preview, imageAnalysis);
             camera.getCameraControl().enableTorch(torchOn);
+            // QR 智能变焦记忆（微信同款）：上次成功识别时的倍率直接生效——
+            // 上次扫远处小码放大的倍率，这次打开即到位，无需再等逐级升档。
+            // 下次若扫大码（1.0x 即成功）记忆自然回落。DPM 保持 1.0（点距估算自决策）
+            if (!dpmMode && decodeEngine != null) {
+                float memory = getPreferences(MODE_PRIVATE)
+                        .getFloat("qr_zoom_memory", 1.0f);
+                androidx.camera.core.ZoomState zs =
+                        camera.getCameraInfo().getZoomState().getValue();
+                if (memory > 1.05f && zs != null) {
+                    memory = Math.min(memory, Math.min(zs.getMaxZoomRatio(), 4.0f));
+                    camera.getCameraControl().setZoomRatio(memory);
+                    decodeEngine.initQrZoom(memory);
+                    ScanFileLog.log("qr zoom memory " + memory);
+                }
+            }
             // DPM 刻印码金属高光抑制：AE 在金属高光场景易过曝，
             // 凹坑"黑环+白心"结构被冲成白斑后图像信息不可恢复（fillHoles 也救不回）。
             // 轻微负曝光补偿压高光（约 -0.5EV），无补光灯时才启用（开灯时曝光已足够低）。
@@ -742,6 +763,16 @@ public class ScanCameraActivity extends AppCompatActivity {
         lastResultTime = now;
         Log.i(TAG, "decode success: " + (result.getBarcodeFormat() == null ? "?" : result.getBarcodeFormat().name())
                 + " text=" + text);
+        // QR 智能变焦记忆：记录本次成功识别时的实际倍率（含用户捏合值），
+        // 下次扫码直接生效——扫大码时倍率自然回落到 1.0
+        if (!dpmMode && camera != null) {
+            androidx.camera.core.ZoomState zs =
+                    camera.getCameraInfo().getZoomState().getValue();
+            if (zs != null) {
+                getPreferences(MODE_PRIVATE).edit()
+                        .putFloat("qr_zoom_memory", zs.getZoomRatio()).apply();
+            }
+        }
         // 成功反馈：震动 + 提示音（结果展示在测试页/H5 回调，不用 Toast 打扰）
         vibrate();
         if (beepEnabled) {
