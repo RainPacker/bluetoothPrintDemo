@@ -535,8 +535,8 @@ class DecodeEngine {
         // ===== 取景框 ROI 裁剪（竖屏显示帧坐标，与 UI 取景框同参照系）=====
         // 只作用于慢层（级联/pitchEst/ROI 放大，耗时大头）：中距离拍摄（码在框内）
         // 时按裁剪面积近似线性提速 4~6 倍，框外噪声不进级联（乱码误读来源减少）。
-        // cpp1/g1 快速命中层保持全帧：特写大码（码 >框）时 ROI 会裁掉 L 型定位边；
-        // 且码在框外时 cpp 层仍可识别（用户未对准框的场景）
+        // cpp1/g1 快速命中层保持全帧解码（特写大码码 >框时 ROI 会裁掉 L 型定位边），
+        // 框外码由 cppDecodeInRoi 按码面积交集过滤输出（平板框外码误识别修复）
         if (roi != null && roi.length == 4) {
             int x0 = Math.max(0, Math.min(width - 32, roi[0]));
             int y0 = Math.max(0, Math.min(height - 32, roi[1]));
@@ -819,11 +819,13 @@ class DecodeEngine {
 
     /**
      * cpp 全帧解码 + 取景框位置过滤：cpp1/g1 按设计跑全帧（特写码大于方框时
-     * 裁 ROI 会裁掉定位边），代价是框外码也会被识别（真机反馈：旁边的其他
-     * 码/标签误触发）。本方法按"码中心点落在取景框内"过滤——特写大码中心
-     * 在框内不受影响，框外码（中心在框外）不再输出。
+     * 裁 ROI 会裁掉定位边），代价是框外码也会被识别（平板实测反馈：旁边的
+     * 码/标签不在方块区域内也出码）。本方法按码尺寸分级过滤：
+     * ① 码跨框（特写大码，任一边长 > 框对应边长）：中心点在框内即有效瞄准；
+     * ② 码可完整落入框（常规瞄准）：要求 ≥90% 面积在框内——大部分在框外、
+     *    仅中心点贴框的码不再输出（原中心点过滤的漏网场景）。
      *
-     * @param roi 取景框 {x0,y0,w,h}（旋转矫正后坐标），null=不过滤
+     * @param roi 取景框 {x0,y0,w,h}（旋转矫正后坐标，已含外扩容差），null=不过滤
      */
     private Result cppDecodeInRoi(Bitmap bitmap, zxingcpp.BarcodeReader reader, int[] roi, String tag) {
         try {
@@ -832,7 +834,7 @@ class DecodeEngine {
             if (results != null && !results.isEmpty()) {
                 int rejected = 0;
                 for (zxingcpp.BarcodeReader.Result rr : results) {
-                    if (isCenterInRoi(rr.getPosition(), roi)) {
+                    if (isPositionInRoi(rr.getPosition(), roi)) {
                         return toZxingResult(rr);
                     }
                     rejected++;
@@ -849,10 +851,13 @@ class DecodeEngine {
     }
 
     /**
-     * 码中心是否在取景框内（外扩 5% 容差：码中心贴框边仍算有效瞄准）。
-     * 用中心而非四角：特写时码大于方框，四角必然出框，中心判定不误杀。
+     * 码位置是否有效瞄准取景框（按码尺寸分级）：
+     * ① 码跨框（特写，任一边长 > 框边长）：中心点判定（外扩 5% 容差）——
+     *    特写时码大于方框，四角必然出框，面积判定会误杀；
+     * ② 常规码（两维均 ≤ 框）：码包围盒与框交集 ≥90% 码面积才接受——
+     *    仅中心点在框内、大部分面积在框外的码被拒绝（平板框外码误识别根因）。
      */
-    private static boolean isCenterInRoi(zxingcpp.BarcodeReader.Position pos, int[] roi) {
+    private static boolean isPositionInRoi(zxingcpp.BarcodeReader.Position pos, int[] roi) {
         if (pos == null || roi == null || roi.length != 4) {
             return true; // 无位置信息或无取景框：不过滤
         }
@@ -863,12 +868,31 @@ class DecodeEngine {
         if (tl == null || tr == null || br == null || bl == null) {
             return true;
         }
-        float cx = (tl.x + tr.x + br.x + bl.x) / 4f;
-        float cy = (tl.y + tr.y + br.y + bl.y) / 4f;
+        float bx0 = Math.min(Math.min(tl.x, tr.x), Math.min(bl.x, br.x));
+        float bx1 = Math.max(Math.max(tl.x, tr.x), Math.max(bl.x, br.x));
+        float by0 = Math.min(Math.min(tl.y, tr.y), Math.min(bl.y, br.y));
+        float by1 = Math.max(Math.max(tl.y, tr.y), Math.max(bl.y, br.y));
+        float bw = bx1 - bx0;
+        float bh = by1 - by0;
+        float cx = (bx0 + bx1) / 2f;
+        float cy = (by0 + by1) / 2f;
         int mx = Math.max(1, roi[2] / 20);
         int my = Math.max(1, roi[3] / 20);
-        return cx >= roi[0] - mx && cx <= roi[0] + roi[2] + mx
-                && cy >= roi[1] - my && cy <= roi[1] + roi[3] + my;
+        if (bw > roi[2] || bh > roi[3]) {
+            // ① 特写大码（码跨框）：中心在框内（含 5% 容差）即有效瞄准
+            return cx >= roi[0] - mx && cx <= roi[0] + roi[2] + mx
+                    && cy >= roi[1] - my && cy <= roi[1] + roi[3] + my;
+        }
+        // ② 常规码：与框交集面积 ≥90% 码面积（框外占比 >10% 拒绝）
+        float ix0 = Math.max(bx0, roi[0]);
+        float iy0 = Math.max(by0, roi[1]);
+        float ix1 = Math.min(bx1, roi[0] + roi[2]);
+        float iy1 = Math.min(by1, roi[1] + roi[3]);
+        if (ix1 <= ix0 || iy1 <= iy0) {
+            return false; // 码与框无交集（完全在框外）
+        }
+        float interArea = (ix1 - ix0) * (iy1 - iy0);
+        return interArea >= 0.9f * Math.max(1f, bw * bh);
     }
 
     /**

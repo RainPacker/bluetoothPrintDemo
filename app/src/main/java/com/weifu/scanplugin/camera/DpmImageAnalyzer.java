@@ -181,9 +181,12 @@ class DpmImageAnalyzer implements ImageAnalysis.Analyzer {
         int x1 = Math.round(((nr[2] - 0.5f) * visW + 0.5f) * fw);
         int y0 = Math.round(((nr[1] - 0.5f) * visH + 0.5f) * fh);
         int y1 = Math.round(((nr[3] - 0.5f) * visH + 0.5f) * fh);
-        // 外扩 20% 冗余：码略出框（视觉对齐误差）仍可识别
-        int padX = Math.round((x1 - x0) * 0.2f);
-        int padY = Math.round((y1 - y0) * 0.2f);
+        // 外扩 10% 冗余：码略出框（视觉对齐误差）仍可识别。
+        // 曾用 20%：平板实测框外紧邻的码落入外扩环带被误识别（用户反馈
+        // "码不在方块区域内也出码"），收窄到 10%——框外识别带减半，
+        // "略出框"容错保留（cpp 层另有码面积交集判定兜底）
+        int padX = Math.round((x1 - x0) * 0.1f);
+        int padY = Math.round((y1 - y0) * 0.1f);
         x0 = Math.max(0, x0 - padX);
         y0 = Math.max(0, y0 - padY);
         x1 = Math.min(fw, x1 + padX);
