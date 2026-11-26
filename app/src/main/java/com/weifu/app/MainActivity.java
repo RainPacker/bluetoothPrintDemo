@@ -84,7 +84,7 @@ import java.util.Random;
 
 public class MainActivity extends AppCompatActivity /**implements Scanner.DataListener, EMDKManager.EMDKListener**/ {
      private static final int REQUEST_OPEN = 0X01;
-    private static final String COM_WEIFU_IWMS_FILEPROVIDE = "com.weifu.momtt.fileprovider";
+    private static final String COM_WEIFU_IWMS_FILEPROVIDE = "com.weifu.iwmsldx.fileprovider";
     private static final String WATERMARK_TEXT = "MOM";
     private static final String CHANNEL_ID ="wps" ;
     private static final int NOTICE_PERMISSION_REQUEST_CODE = 3 ;
@@ -102,13 +102,13 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
 //    private static final String LOADRL ="http://121.225.97.57:18443/" ;
  //   private static final String LOADRL ="http://221.229.106.229:8000/pad/" ;
 //    private static final String LOADRL ="http://10.1.4.145" ;
-    private static final String LOADRL ="http://momtt-pad.weifu.com.cn/" ;
+    private static final String LOADRL ="http://10.1.200.51:30865" ;
 //    private static final String LOADRL ="http://10.94.31.150:31223/" ;
     /**
      * 测试模式开关：true 加载本地扫码测试页（assets/test.html），false 加载生产 H5（LOADRL）
      */
     /** 测试页开关：false=生产模式（加载原 H5 地址 + 版本升级检查）；true=本地 test.html 验证扫码插件 */
-    private static final boolean LOAD_TEST_PAGE = true;
+    private static final boolean LOAD_TEST_PAGE = false;
     private WebView webView;
     private final int PICK_REQUEST = 10011;
     ValueCallback<Uri> mFilePathCallback;
