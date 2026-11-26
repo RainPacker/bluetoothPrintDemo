@@ -77,6 +77,11 @@ final class DotGridDecoder {
         return null;
     }
 
+    /** 最近一次 decode 中质心数≥40 档的网格点距（dg 质心法比 run 统计
+     *  的 estimatePitch 可靠——锈蚀背景上后者乱跳 8~74，前者逐帧稳定），
+     *  供 DecodeEngine 平滑 pitchEst */
+    static double lastGridPitch = -1;
+
     private static Result decodeOnce(byte[] gray, int width, int height) {
         if (width < 64 || height < 64 || gray.length != width * height) {
             return null;
@@ -86,13 +91,44 @@ final class DotGridDecoder {
         // 双极性：暗底亮点（闪存压痕）→ 高侧为点；亮底暗点 → 低侧为点。
         // 亮点极性优先（DotPeen 暗底图为主场景）
         for (boolean brightDots : new boolean[]{true, false}) {
+            // 多档阈值质心召回：真机贴近拍（otsu=70~99）单档丢 ~70% 质心
+            // （11-24 日志 pBn132 vs 实际 ~500 点）——弱反光点被全局 otsu 切掉
+            // → n0 尺寸估计塌缩（span/pitch≈20 vs 真实 40）→ 候选尺寸全偏
+            // → 网格一致性 lo → 贴近时段全 miss，拉远才命中。多档
+            // （otsu±12/±25 步进）各自提质心后合并去重（0.5px 量化桶）；
+            // 重复质心不去重会把最近邻点距拉到 0 破坏中值，面积过滤
+            // （med*0.15~4）天然挡掉低阈值引入的大片底连通域
+            List<double[]> cents = new ArrayList<>();
             boolean[] mask = new boolean[gray.length];
-            for (int i = 0; i < gray.length; i++) {
-                int v = gray[i] & 0xFF;
-                mask[i] = brightDots ? v >= otsu : v < otsu;
+            int[] ths = brightDots
+                    ? new int[]{otsu - 25, otsu - 12, otsu}
+                    : new int[]{otsu, otsu + 12, otsu + 25};
+            for (int t : ths) {
+                if (t < 0 || t > 255) {
+                    continue;
+                }
+                for (int i = 0; i < gray.length; i++) {
+                    int v = gray[i] & 0xFF;
+                    mask[i] = brightDots ? v >= t : v < t;
+                }
+                List<double[]> c = extractCentroids(mask, width, height);
+                if (c != null) {
+                    // 线性距离去重（门限 1.5px）：跨档同点质心距离 ~0.3px，
+                    // 量化桶法在桶边界抖动漏去重（合成图实测点距中值塌缩到
+                    // 0.28 触发 rng 拒绝）。数量级 ~500 点，O(n²) 代价可忽略
+                    outer:
+                    for (double[] pt : c) {
+                        for (double[] kept : cents) {
+                            double dx = pt[0] - kept[0], dy = pt[1] - kept[1];
+                            if (dx * dx + dy * dy < 2.25) {
+                                continue outer;
+                            }
+                        }
+                        cents.add(pt);
+                    }
+                }
             }
-            List<double[]> cents = extractCentroids(mask, width, height);
-            if (cents == null) {
+            if (cents.isEmpty()) {
                 diag.append('p').append(brightDots ? 'B' : 'D').append(":none ");
                 continue;
             }
@@ -102,8 +138,30 @@ final class DotGridDecoder {
                         .append("n").append(cents.size()).append("@").append(pitch).append("rng ");
                 continue;
             }
+            // 密度过滤：低阈值档把背景纹理/glare 碎片切成假质心散布全图
+            // （真机 14:37:43 pBn855 vs 码实际 ~250 点），percentile 边界外扩
+            // → n0 高估出 MAX_N → 候选空集。码点在 ~pitch 网格上密集（3x3
+            // 桶邻域必有点），孤立散点剔除后重估点距/边界
+            List<double[]> dense = filterDense(cents, pitch, width, height);
+            if (dense.size() >= 24 && dense.size() < cents.size()) {
+                cents = dense;
+                double p2 = nnMedianPitch(cents);
+                if (p2 >= 3.5 && p2 <= 60) {
+                    pitch = p2;
+                }
+            }
             diag.append('p').append(brightDots ? 'B' : 'D')
                     .append("n").append(cents.size()).append('@').append(pitch).append(' ');
+            if (cents.size() >= 40) {
+                lastGridPitch = pitch;
+            }
+            // 网格搜索必须用主档（otsu）mask：多档循环结束时 mask 是最低阈值
+            // 版本（背景污染——真机 24x24=0.045lo 的直接原因，合成图底干净
+            // 未暴露），gridContrast 与格心采样的一致性分数会被污染 mask 稀释
+            for (int i = 0; i < gray.length; i++) {
+                int v = gray[i] & 0xFF;
+                mask[i] = brightDots ? v >= otsu : v < otsu;
+            }
             // 码区百分位边界（抗零星噪点外扩）
             double[] bounds = percentileBounds(cents);
             double spanX = bounds[1] - bounds[0];
@@ -152,21 +210,40 @@ final class DotGridDecoder {
                         }
                     }
                 }
+                // 行/列晶格漂移精化。曲面畸变重评：圆柱工件上的码行列弯曲，
+                // 静态直线网格对比度被压到门槛下（真机实拍 26x26=0.093，
+                // 精化后可达标）——低分候选先精化再用非均匀网格重评
+                double[] colX = null, rowY = null;
                 if (bestScore < MIN_CONTRAST) {
-                    diag.append(rows).append('x').append(cols)
-                            .append('=').append(bestScore).append("lo ");
-                    continue;
+                    if (bestScore >= 0.04) {
+                        colX = refineCols(mask, width, height, bestGx, bestGy, bestP, cols);
+                        rowY = refineRows(mask, width, height, colX, bestGy, bestP, rows, cols);
+                        double s2 = gridContrastAt(mask, width, height, colX, rowY, rows, cols);
+                        if (s2 >= MIN_CONTRAST) {
+                            bestScore = s2;
+                        }
+                    }
+                    if (bestScore < MIN_CONTRAST) {
+                        diag.append(rows).append('x').append(cols)
+                                .append('=').append(bestScore).append("lo ");
+                        continue;
+                    }
                 }
                 diag.append(rows).append('x').append(cols)
-                        .append('=').append(bestScore).append(' ');
-                // 行/列晶格漂移精化
-                double[] colX = refineCols(mask, width, height, bestGx, bestGy, bestP, cols);
-                double[] rowY = refineRows(mask, width, height, colX, bestGy, bestP, rows, cols);
-                // 格心亮度采样
-                float[][] lum = sampleLum(gray, width, height, colX, rowY, bestP);
-                // 阈值扫描（Otsu 邻域 + 格心亮度中值）× 极性 × 方向内核直解
+                        .append('=').append(bestScore)
+                        .append(colX != null ? "+ " : " ");
+                if (colX == null) {
+                    colX = refineCols(mask, width, height, bestGx, bestGy, bestP, cols);
+                    rowY = refineRows(mask, width, height, colX, bestGy, bestP, rows, cols);
+                }
+                // 格心亮度采样（窗口极值，保住 1~2px 小点信号）
+                float[][] lum = sampleLum(gray, width, height, colX, rowY, bestP, brightDots);
+                // 阈值扫描（Otsu 邻域 + 格心亮度中值 + 矩阵自身 Otsu）
+                // × 极性 × 方向内核直解
                 int mid = cellMidThreshold(lum, rows * cols);
-                int[] thresholds = {otsu - 20, otsu - 10, otsu, otsu + 10, otsu + 20, mid};
+                int lumOtsu = lumMatrixOtsu(lum, rows, cols);
+                int[] thresholds = {otsu - 20, otsu - 10, otsu, otsu + 10, otsu + 20,
+                        mid, lumOtsu};
                 Decoder kernel = new Decoder();
                 for (int t : thresholds) {
                     if (t < 0 || t > 255) {
@@ -197,6 +274,44 @@ final class DotGridDecoder {
     }
 
     // ===== 连通域质心 =====
+
+    /**
+     * 密度过滤剔除孤立假质心：按 pitch 分桶，3x3 桶邻域计数 <3 的质心
+     * 视为孤立散点丢弃。码点间距 ~pitch，真实码区桶密度高；低阈值档
+     * 召回的背景碎片质心孤立。O(n) 桶化 + O(n) 邻域求和
+     */
+    private static List<double[]> filterDense(List<double[]> cents, double pitch, int w, int h) {
+        int bw = Math.max(1, (int) (w / pitch) + 1);
+        int bh = Math.max(1, (int) (h / pitch) + 1);
+        int[] cnt = new int[bw * bh];
+        int[] bIdx = new int[cents.size()];
+        for (int i = 0; i < cents.size(); i++) {
+            double[] p = cents.get(i);
+            int bx = (int) (p[0] / pitch);
+            int by = (int) (p[1] / pitch);
+            if (bx < 0) bx = 0; else if (bx >= bw) bx = bw - 1;
+            if (by < 0) by = 0; else if (by >= bh) by = bh - 1;
+            bIdx[i] = by * bw + bx;
+            cnt[bIdx[i]]++;
+        }
+        List<double[]> out = new ArrayList<>(cents.size());
+        for (int i = 0; i < cents.size(); i++) {
+            int bx = bIdx[i] % bw, by = bIdx[i] / bw;
+            int around = 0;
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    int nx = bx + dx, ny = by + dy;
+                    if (nx >= 0 && nx < bw && ny >= 0 && ny < bh) {
+                        around += cnt[ny * bw + nx];
+                    }
+                }
+            }
+            if (around >= 3) {
+                out.add(cents.get(i));
+            }
+        }
+        return out;
+    }
 
     /**
      * 连通域质心提取：4 邻接 BFS，面积两轮过滤（绝对 [3,4000] +
@@ -342,6 +457,47 @@ final class DotGridDecoder {
     }
 
     /**
+     * 非均匀网格对比度：用行/列精化后的独立格心坐标重评。曲面弯曲/透视
+     * 畸变场景下行列不直，静态直线网格分数失真；格心取精化坐标、
+     * 空隙点取相邻格心中点（边界列/行按末差外推半格）。
+     */
+    private static double gridContrastAt(boolean[] mask, int width, int height,
+                                         double[] colX, double[] rowY, int rows, int cols) {
+        double on = 0, off = 0;
+        int cnt = 0;
+        for (int my = 0; my < rows; my++) {
+            for (int mx = 0; mx < cols; mx++) {
+                int ix = (int) Math.round(colX[mx]);
+                int iy = (int) Math.round(rowY[my]);
+                if (ix >= 0 && iy >= 0 && ix < width && iy < height) {
+                    on += mask[iy * width + ix] ? 1 : 0;
+                }
+                double jx, jy;
+                if (mx + 1 < cols) {
+                    jx = (colX[mx] + colX[mx + 1]) / 2;
+                } else if (mx > 0) {
+                    jx = colX[mx] + (colX[mx] - colX[mx - 1]) / 2;
+                } else {
+                    jx = colX[mx] + 0.5;
+                }
+                if (my + 1 < rows) {
+                    jy = (rowY[my] + rowY[my + 1]) / 2;
+                } else if (my > 0) {
+                    jy = rowY[my] + (rowY[my] - rowY[my - 1]) / 2;
+                } else {
+                    jy = rowY[my] + 0.5;
+                }
+                int jxi = (int) Math.round(jx), jyi = (int) Math.round(jy);
+                if (jxi >= 0 && jyi >= 0 && jxi < width && jyi < height) {
+                    off += mask[jyi * width + jxi] ? 1 : 0;
+                }
+                cnt++;
+            }
+        }
+        return cnt > 0 ? (on - off) / cnt : 0;
+    }
+
+    /**
      * 列晶格漂移精化：每列在 ±p*0.3 内搜索整列 mask 命中峰值，
      * 再在峰值邻域求加权质心（0.5px 步进）。
      */
@@ -435,16 +591,20 @@ final class DotGridDecoder {
      * 格心亮度采样：半径 p*0.35 的方形窗均值（≈点径 0.8p 的内切区域）。
      */
     private static float[][] sampleLum(byte[] gray, int width, int height,
-                                       double[] colX, double[] rowY, double p) {
+                                       double[] colX, double[] rowY, double p,
+                                       boolean brightDots) {
         int rows = rowY.length, cols = colX.length;
         int r = Math.max(1, (int) Math.round(p * 0.35));
         float[][] lum = new float[rows][cols];
         for (int my = 0; my < rows; my++) {
             for (int mx = 0; mx < cols; mx++) {
-                double sum = 0;
-                int cnt = 0;
                 int cx = (int) Math.round(colX[mx]);
                 int cy = (int) Math.round(rowY[my]);
+                // 点径 1~2px 的码点在 (2r+1)^2 均值窗口里只占 ~4/25，信号被
+                // 稀释 6 倍（暗点 v80 底 v130 → 均值 122，阈值全档切不开，
+                // 真机网格达标后内核零 votes 的根因）——改取窗口极值：
+                // 亮点码取最亮、暗点码取最暗，保住码点信号
+                int best = brightDots ? -1 : 256;
                 for (int dy = -r; dy <= r; dy++) {
                     int y = cy + dy;
                     if (y < 0 || y >= height) {
@@ -455,14 +615,59 @@ final class DotGridDecoder {
                         if (x < 0 || x >= width) {
                             continue;
                         }
-                        sum += gray[y * width + x] & 0xFF;
-                        cnt++;
+                        int v = gray[y * width + x] & 0xFF;
+                        if (brightDots ? v > best : v < best) {
+                            best = v;
+                        }
                     }
                 }
-                lum[my][mx] = cnt > 0 ? (float) (sum / cnt) : 128;
+                lum[my][mx] = (best >= 0 && best <= 255) ? best : 128;
             }
         }
         return lum;
+    }
+
+    /** 采样矩阵自身的 Otsu 阈值：格心极值采样后点/底双峰分布与图像全局
+     *  亮度分布差异大，用矩阵直方图 Otsu 自适应切分，比固定 otsu±20 档贴合 */
+    private static int lumMatrixOtsu(float[][] lum, int rows, int cols) {
+        int[] hist = new int[256];
+        int n = 0;
+        for (int y = 0; y < rows; y++) {
+            for (int x = 0; x < cols; x++) {
+                int v = (int) lum[y][x];
+                if (v < 0) v = 0; else if (v > 255) v = 255;
+                hist[v]++;
+                n++;
+            }
+        }
+        if (n == 0) {
+            return 128;
+        }
+        double sum = 0;
+        for (int i = 0; i < 256; i++) {
+            sum += i * hist[i];
+        }
+        double sumB = 0, wB = 0;
+        double bestVar = -1;
+        int bestT = 128;
+        for (int t = 0; t < 256; t++) {
+            wB += hist[t];
+            if (wB == 0) {
+                continue;
+            }
+            double wF = n - wB;
+            if (wF == 0) {
+                break;
+            }
+            sumB += t * hist[t];
+            double mB = sumB / wB, mF = (sum - sumB) / wF;
+            double var = wB * wF * (mB - mF) * (mB - mF);
+            if (var > bestVar) {
+                bestVar = var;
+                bestT = t;
+            }
+        }
+        return bestT;
     }
 
     /**

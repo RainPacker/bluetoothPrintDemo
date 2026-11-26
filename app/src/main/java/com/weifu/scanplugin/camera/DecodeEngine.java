@@ -100,6 +100,32 @@ class DecodeEngine {
      * 连续 2 帧小点距才触发（防噪声）；冷却防 zoom 后反复震荡。
      * 回退：6s 未追踪到任何疑似码 → 建议 1.0（用户已换目标，3x 视野过窄）。
      */
+    /** pitchEst 平滑环形缓冲：run 统计的 estimatePitch 在锈蚀背景上乱跳
+     *  8~74（今早日志 149 帧 pitchEst 两峰分布），导致 main skip 乱切 +
+     *  auto zoom 抖动。dg 质心法 pitch（pDn247@5.19）逐帧稳定，miss 时
+     *  回填此缓冲，决策取中位数 */
+    private final int[] pitchHist = new int[9];
+    private int pitchHistN;
+    private int noSignalStreak;
+
+    private void pushPitch(int p) {
+        if (p <= 0) {
+            return;
+        }
+        pitchHist[pitchHistN++ % pitchHist.length] = p;
+    }
+
+    private int medianPitch() {
+        if (pitchHistN == 0) {
+            return -1;
+        }
+        int n = Math.min(pitchHistN, pitchHist.length);
+        int[] a = new int[n];
+        System.arraycopy(pitchHist, 0, a, 0, n);
+        java.util.Arrays.sort(a);
+        return a[n / 2];
+    }
+
     private void handleAutoZoom(int pitchEst, long now) {
         ZoomRequestListener l = zoomListener;
         if (l == null) {
@@ -128,9 +154,17 @@ class DecodeEngine {
             l.onZoomRequest(target);
             return;
         }
-        // 回退：长时间无码信号（点距不可测或过大）且 6s 无任何追踪命中
+        // 回退：长时间无码信号（点距不可测或过大）且 6s 无任何追踪命中。
+        // 连击保护：estimatePitch 乱跳时单帧 noSignal 会反复触发 req/reset
+        // 横跳（今早日志 applied 1.5 → 3s 后 reset 1.0 实证）
         boolean noSignal = pitchEst < 3 || pitchEst > 11;
-        if (noSignal && now - lastTrackMs > 6000) {
+        if (noSignal) {
+            noSignalStreak++;
+        } else {
+            noSignalStreak = 0;
+        }
+        if (noSignalStreak >= 8 && now - lastTrackMs > 6000) {
+            noSignalStreak = 0;
             lastTrackMs = now; // 防止冷却期内每帧重复请求
             lastZoomReqMs = now;
             if (lastZoomRatio > 1.0f) {
@@ -560,8 +594,11 @@ class DecodeEngine {
         // factor 必须按长边判定：竖屏帧 width=1200/1080，按宽度判定会失效退化为
         // 全分辨率——全分辨率主管线单帧 1~4s 是真机级联延迟的元凶（日志验证）；
         // 且全分辨率 dot chains 对 DotPeen 码只产出 8 位乱码误读，/2 后点距
-        // 落入 (win,C) 参数族工作区间且提速 4 倍
-        int factor = Math.max(width, height) > 1000 ? 2 : 1;
+        // 落入 (win,C) 参数族工作区间且提速 4 倍。
+        // DPM 阈值 700：viewRoi 裁剪帧 972x748 ≤1000 会直落 factor=1，m2
+        // 全分辨率 dot chains 单帧 4~5s（11-24 14:19:05 cascade 5203ms 实证，
+        // 期间 pitchEst=10 触发 m2 但吃全分辨率）。QR 模式保持 1000 保细节
+        int factor = Math.max(width, height) > (dpmMode ? 700 : 1000) ? 2 : 1;
         byte[] small = ImagePreprocessor.downscale(gray, width, height, factor);
         long t3 = android.os.SystemClock.elapsedRealtime();
         result = decodeCascade(gray, width, height, small, width / factor, height / factor, factor);
@@ -579,7 +616,7 @@ class DecodeEngine {
      * 3.0 命中尺度记忆：上帧曾在某辅尺度解码成功（待跨帧确认），本帧优先
      *     复跑同尺度 → 第二帧立即再次命中，快速通过验证出码
      * 3.1 主尺度 /2 全管线（近距离/小码场景，点距更大保细节）
-     * 3.2 辅尺度 {4,5,6,8,10} 逐帧轮转，只跑并行命中链 + C++ 兜底
+     * 3.2 辅尺度 {3,4,5,6,8,10} 逐帧轮转，只跑并行命中链 + C++ 兜底
      *     （高倍降采样像素量小，代价几十 ms；多帧累积覆盖全尺度带）
      */
     private Result decodeCascade(byte[] gray, int width, int height, byte[] small, int sw, int sh, int factor) {
@@ -602,6 +639,36 @@ class DecodeEngine {
                 // 标签与辅尺度轮转一致（a+尺度）：首帧命中后，下帧记忆探针
                 // 复跑同尺度即可凑满确认次数，快速出码
                 return confirmCameraResult(result, "a" + s);
+            }
+        }
+
+        // ===== 点距估计 + DotPeen 点阵网格直解（dg，快层前移）=====
+        // 离线实证（合成图原始像素，Raster 直读与真机 YUV 语义对齐）：
+        // DotGridDecoder 双极性（暗底亮点/亮底暗点）网格直解对点阵码全解
+        // （flash_dark 负片 59ms / alu_clean 39ms，文本全对），而 adaptive
+        // 链族对合成点阵零覆盖（全参数空间扫描全灭）。此前该层排在级联
+        // 最尾（m2/aux/f 之后）——慢层 miss 帧 1~3s + 软时限逐层扣减，
+        // dg 大部分帧根本跑不到，点阵码（尤其负片极性 flash_dark 型）
+        // 实际只剩 cpp 碰运气。前移后 DPM 模式每帧必跑（40~150ms），
+        // 点阵码获得稳定 Java 命中层；QR/普通码由 cpp1 首帧直出短路，
+        // 不会白跑 dg（dpmMode 限定）
+        int pitchEst = dpmMode ? estimatePitch(gray, width, height) : -1;
+        if (dpmMode) {
+            pushPitch(pitchEst);
+            int mp = medianPitch();
+            if (mp > 0) {
+                pitchEst = mp;
+            }
+            ScanFileLog.log("pitchEst=" + pitchEst);
+            handleAutoZoom(pitchEst, android.os.SystemClock.elapsedRealtime());
+            // 小点距帧（1~11）此层跳过：全分辨率点径仅 1~2px 质心丢 ~80%
+            // （真机 pBn45），由小点距分支的放大图路径专跑；点距未知（-1）
+            // 保守直跑保底
+            if (pitchEst <= 0 || pitchEst > 11) {
+                Result dg = decodeDotGridLayer(gray, width, height, pitchEst);
+                if (dg != null) {
+                    return confirmCameraResult(dg, "dg");
+                }
             }
         }
 
@@ -660,21 +727,36 @@ class DecodeEngine {
             }
         }
 
+        // pending 优先：已有待确认文本时跳过探索性慢层（m2/f），后续帧只靠
+        // 快层（cpp1/g1/cppSm/记忆尺度/upscale）凑确认——真机日志：确认间隔
+        // 1.6~3.5s 全耗在 miss 帧 m2 全管线上；确认加速即出码加速。
+        // 多码场景代价：pending 期间（TTL 2s）另一码的探索暂停，可接受
+        boolean confirming = !dmHitCounts.isEmpty();
         byte[] workImg = small;
         int workW = sw, workH = sh;
-        // 主尺度为 /2 图（decodeYuv 传入）：小码保细节且点距落入 (win,C) 参数族工作区间，
-        // 全分辨率 dot chains 实测只产出乱码误读且单帧 1~4s
-        ScanFileLog.log("main=/" + factor + " " + workW + "x" + workH
-                + " roiPhase=" + (frameCounter % 3));
-        result = decodeGrayDpm(workImg, workW, workH, true, frameCounter % 3,
-                null, tCascade + 900L);
-        if (result != null) {
-            return confirmCameraResult(result, "m" + factor);
+        // 主尺度 /2 条件化（decodeYuv 传入 /2 图）：小码保细节且点距落入 (win,C)
+        // 参数族工作区间，全分辨率 dot chains 实测只产出乱码误读。
+        // 真机日志：m2 对 DotPeen 点阵码几乎从不命中（命中全来自 cppSm/记忆
+        // 尺度/cpp1）却每帧吃 1~3.5s（有效帧率 0.3~0.8fps 的元凶）——
+        // pitchEst>22 时 /2 后点距 >11px 明确出甜蜜区带，m2 注定 miss，跳过
+        // （点距未知 pitchEst=-1 时保守照跑，防误判漏码）
+        // 小点距帧（pitchEst 3~7）m2 限流为每 3 帧一次：flash_dark 实测该
+        // 场景 m2 单帧吃 5s+（6354ms 帧的构成），10 分钟零 confirmed 贡献
+        // （命中全来自 u2/cppSm/dg）——全分辨率 dot chains 在点距 4~7px 的
+        // 帧上参数族不工作，只留低频保底防漏
+        boolean m2Throttle = pitchEst >= 3 && pitchEst <= 7 && frameCounter % 3 != 0;
+        if (!confirming && (pitchEst < 0 || pitchEst <= 22) && !m2Throttle) {
+            ScanFileLog.log("main=/" + factor + " " + workW + "x" + workH
+                    + " roiPhase=" + (frameCounter % 3));
+            result = decodeGrayDpm(workImg, workW, workH, true, frameCounter % 3,
+                    null, tCascade + 900L);
+            if (result != null) {
+                return confirmCameraResult(result, "m" + factor);
+            }
+        } else {
+            ScanFileLog.log("main=/" + factor + " skip confirming=" + confirming
+                    + " pitchEst=" + pitchEst);
         }
-
-        int pitchEst = estimatePitch(gray, width, height);
-        ScanFileLog.log("pitchEst=" + pitchEst);
-        handleAutoZoom(pitchEst, android.os.SystemClock.elapsedRealtime());
 
         if (pitchEst > 0 && pitchEst <= 11) {
             // 小点距（真机实测 4~6px：码占屏仅 ~7%，1440 宽帧中码约 100px）：
@@ -717,8 +799,17 @@ class DecodeEngine {
                 return confirmCameraResult(result, "u" + scale);
             }
             // DotPeen 点阵网格直解兜底（点式 L 定位边场景：zxing 定位器无法定位，
-            // 但网格采样直解内核可解——平板暗底点阵图实测根因）
-            Result dg = decodeDotGridLayer(gray, width, height, pitchEst);
+            // 但网格采样直解内核可解——平板暗底点阵图实测根因）。
+            // 先放大图：小点距帧（4~8px）全分辨率点径仅 1~2px，质心提取丢
+            // ~80%（真机 pBn45 vs 码 ~250 点）；×scale 放大图点径翻倍质心
+            // 召回完整。放大图 miss 再跑原图保底（crop 比率收缩截碎码时兜底）
+            Result dg = decodeDotGridLayer(upImg, upW, upH,
+                    (int) Math.round(pitchEst * scale));
+            // 原图保底限流为每 2 帧一次：小点距帧全分辨率点径 1~2px，质心
+            // 召回 ~20%（pBn51 vs ~250 点）几乎必 miss，放大图 dg 已覆盖
+            if (dg == null && frameCounter % 2 == 1) {
+                dg = decodeDotGridLayer(gray, width, height, pitchEst);
+            }
             if (dg != null) {
                 return confirmCameraResult(dg, "dg");
             }
@@ -734,7 +825,10 @@ class DecodeEngine {
                 aux = 2;
             }
         } else {
-            int[] auxScales = {4, 5, 6, 8, 10};
+            // /3 档：合成图 BYD 长文本（19 模块码）全参数扫描唯一成功档
+            // （/2 主尺度与 /4~10 全败，仅 /3 + eq + win91 命中），帧内点距
+            // 12~15px 带的专用补档
+            int[] auxScales = {3, 4, 5, 6, 8, 10};
             aux = auxScales[frameCounter % auxScales.length];
         }
         ScanFileLog.log("aux=/" + aux);
@@ -752,18 +846,14 @@ class DecodeEngine {
             }
         }
         // fullResRoi：2.76MP 多趟解码（真机实测为级联 2s 的主要构成之一），
-        // 每 3 帧跑一次，其余帧跳过（省下的时间让有效帧率翻倍）
-        if (frameCounter % 3 == 0
+        // 每 3 帧跑一次，其余帧跳过（省下的时间让有效帧率翻倍）；
+        // pending 优先：确认中跳过（该层确认门槛还需 +1，凑确认效率低于快层）
+        if (!confirming && frameCounter % 3 == 0
                 && android.os.SystemClock.elapsedRealtime() - tCascade < 900L) {
             Result f = confirmCameraResult(decodeFullResRoi(gray, width, height), "f");
             if (f != null) {
                 return f;
             }
-        }
-        // 第 4 层：DotPeen 点阵网格直解（点式 L 定位边专项兜底）
-        Result dg = decodeDotGridLayer(gray, width, height, pitchEst);
-        if (dg != null) {
-            return confirmCameraResult(dg, "dg");
         }
         return null;
     }
@@ -773,19 +863,27 @@ class DecodeEngine {
      * （>800px 侧先 /2 降采样，点距落入 3.5~60px 搜索区间即可）。
      */
     private Result decodeDotGridLayer(byte[] gray, int width, int height, int pitchEst) {
-        // 点距感知降采样：pitchEst≤11 的帧再 /2 会把点距压到 3.5px 搜索下限
-        // 以下，连通域直接糊掉（真机 clean 码 pitchEst=5~9 时段 dg 全 miss
-        // 实证）——保持全分辨率直跑；DotGridDecoder 内部本就有"原尺寸失败
-        // 后 /2 重试"，两种点距区间都能覆盖
-        boolean smallPitch = pitchEst > 0 && pitchEst <= 11;
-        int factor = (!smallPitch && Math.max(width, height) > 800) ? 2 : 1;
+        // 点距感知降采样：仅"大点距 + 大图"时 /2（/2 后点距仍 >11 在搜索
+        // 区间内且质心更快更稳）。972x748 ROI 帧一律直跑——12~22 点距帧 /2
+        // 会把点径压半（质心丢 27~80%，真机 pBn45/pBn183 实证）；pitchEst≤11
+        // 的小点距帧由小点距分支的放大图路径覆盖（DotGridDecoder 内部另有
+        // 失败后 /2 重试兜底）
+        int factor = (pitchEst > 22 && Math.max(width, height) > 1600) ? 2 : 1;
         byte[] img = factor == 1 ? gray : ImagePreprocessor.downscale(gray, width, height, factor);
         Result r = DotGridDecoder.decode(img, width / factor, height / factor);
         if (r != null) {
             ScanFileLog.log("dotGrid hit: " + r.getText());
-        } else if ((frameCounter & 3) == 0) {
-            // miss 诊断（每 4 帧），暴露卡死阶段：质心数/点距/候选尺寸/对比度
-            ScanFileLog.log("dotGrid miss diag: " + DotGridDecoder.lastDiag);
+        } else {
+            // miss 时用 dg 质心法 pitch 回填平滑缓冲（比 run 统计的
+            // estimatePitch 可靠——锈蚀背景上后者乱跳 8~74）
+            if (DotGridDecoder.lastGridPitch > 3.5
+                    && DotGridDecoder.lastGridPitch < 60) {
+                pushPitch((int) Math.round(DotGridDecoder.lastGridPitch));
+            }
+            if ((frameCounter & 3) == 0) {
+                // miss 诊断（每 4 帧），暴露卡死阶段：质心数/点距/候选尺寸/对比度
+                ScanFileLog.log("dotGrid miss diag: " + DotGridDecoder.lastDiag);
+            }
         }
         return r;
     }
@@ -1533,14 +1631,23 @@ class DecodeEngine {
                 return t;
             });
         }
-        int[][] params = {{61, 4}, {61, 6},
-                {ImagePreprocessor.ADAPTIVE_WINDOW, 4}, {ImagePreprocessor.ADAPTIVE_WINDOW, 6}};
+        // {win, C, eq, inv}：小窗口链覆盖高对比/常规打标（真机主力）。
+        // 曾按合成图标定加过 {91,10,eq} 大窗均衡化与 {21,5,inv} 反相小窗
+        // 变体——后发现离线工具 toGray 的 getRGB 对灰度 PNG 做 gamma 展开
+        // （暗部 45→117，avgDiff=70），全部"可解"结论建立在与真机 YUV 语义
+        // 脱节的污染数据上（Raster 直读原始像素后全灭，真机日志该层也零
+        // 命中），已撤。点阵码（含负片极性）主力命中层是前移的 dg
+        // （DotGridDecoder 网格直解）。链间竞速 + 多数派裁决防单链误读
+        int[][] params = {{61, 4, 0, 0}, {61, 6, 0, 0},
+                {ImagePreprocessor.ADAPTIVE_WINDOW, 4, 0, 0}, {ImagePreprocessor.ADAPTIVE_WINDOW, 6, 0, 0}};
         java.util.List<java.util.concurrent.Callable<Result>> tasks = new java.util.ArrayList<>();
         for (int[] wc : params) {
             final int win = wc[0];
             final int c = wc[1];
+            final boolean eq = wc[2] == 1;
+            final boolean inv = wc[3] == 1;
             if (win < Math.min(width, height) - 2) {
-                tasks.add(() -> decodeDotChain(gray, width, height, win, c));
+                tasks.add(() -> decodeDotChain(gray, width, height, win, c, eq, inv));
             }
         }
         if (tasks.isEmpty()) {
@@ -1617,8 +1724,21 @@ class DecodeEngine {
      * → close1/close2 → GlobalHist/Hybrid × 正/反色（局部 reader）。
      * 各阶段间响应中断：被取消的任务尽快退出，释放线程池。
      */
-    private Result decodeDotChain(byte[] gray, int width, int height, int win, int c) {
+    private Result decodeDotChain(byte[] gray, int width, int height, int win, int c, boolean eq, boolean inv) {
         byte[] bin = gray.clone();
+        if (inv) {
+            // 负片极性变体：暗底亮点码（如闪存黑环氧压痕反光——flash_dark 实测
+            // 整条链族对负片系统性失效：adaptive"暗=前景" + fillHoles"白=背景"
+            // 的语义会把黑底误当码点间隙处理，链后反相也救不回（结构已破坏），
+            // 唯一可行路径是链前反相（合成图消融实验实锤）
+            ImagePreprocessor.invert(bin);
+        }
+        if (eq) {
+            // 均衡化变体：合成图/低对比实拍的全参数扫描实锤，部分点距带只有
+            // "eq + 大窗口"组合可解（/3 尺度 win=91~101 C=10~12，/2 与小窗口
+            // 全败）。均衡化在链内 clone 上做，不影响其他并行链的输入
+            ImagePreprocessor.equalizeHistogram(bin);
+        }
         ImagePreprocessor.adaptiveThreshold(bin, width, height, win, c);
         if (Thread.currentThread().isInterrupted()) return null;
         ImagePreprocessor.fillHoles(bin, width, height);
