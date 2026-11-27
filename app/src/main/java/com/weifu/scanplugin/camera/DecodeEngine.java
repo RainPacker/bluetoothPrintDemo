@@ -43,11 +43,12 @@ class DecodeEngine {
     // 同一文本须在同一降采样尺度下命中 ≥2 次才对外输出——不同尺度上的
     // 系统性误读互不累积，从机制上杜绝"重复扫描结果不一样"
     private final java.util.HashMap<String, long[]> dmHitCounts = new java.util.HashMap<>();
-    // DM 确认门槛 3 次：DotPeen 码模块噪声大，误读乱码文本偶发重复（同角度同光照
-    // 系统性误读），2 次即输出导致"同一码多次扫描结果不一致"；3 次下真文本
-    // 仅多等一帧（cpp1+g1 同帧双命中已占 2 次，日志实测），乱码需凑 3 次
-    // （跨层一致罕见 / 连续 3 帧同乱码）输出概率大幅下降
-    private static final int DM_CONFIRM_HITS = 3;
+    // DM 确认门槛 2 次：跨帧两次同文本仍互证（乱码需连续两帧读出同一错文本，
+    // 同角度系统性误读概率低于真文本命中概率——真文本总被任何层稳定读出）。
+    // 3 次门槛在 miss 帧 1~2s 的低帧率下把慢层（cppSm/dg/链族）命中后的
+    // 出码拖到 3~6s（真机 dm pending 2~11 轮才 confirmed 实证）；cpp1+g1
+    // 同帧双命中已占满 2 次，快层路径不受影响。dg 层维持 1 次、兜底层 +1
+    private static final int DM_CONFIRM_HITS = 2;
     // 确认计数 TTL：乱码 2s 无再命中即过期（防乱码洪水挤爆计数表）
     private static final long DM_CONFIRM_TTL_MS = 2000;
     // 已出码文本 → 上次对外输出时间（连续模式同码去重窗口）
@@ -720,6 +721,15 @@ class DecodeEngine {
                     smallHit = cppDecode(grayToBitmap(binUp, upW, upH), cppReaderQrBool);
                 }
             }
+            if (smallHit == null && frameCounter % 4 == 2) {
+                // CLAHE 反光变体（每 4 帧）：金属管曲面高光把局部对比度吃掉，
+                // cpp 检测器全帧/ROI 探针均定位失败（真机金属管 DM cpp1/g1/cppSm
+                // 长期 miss 根因之一）；分块均衡化保留局部对比度、压缩高光平坦区
+                // 后再交全格式 reader 探测（~30ms/帧分摊，命中即免进 1~2s 慢级联）
+                byte[] cl = gray.clone();
+                ImagePreprocessor.clahe(cl, width, height);
+                smallHit = cppDecode(grayToBitmap(cl, width, height), cppReaderQr);
+            }
             long tSmDone = android.os.SystemClock.elapsedRealtime();
             ScanFileLog.log("cppSm " + (tSmDone - tSm) + "ms hit=" + (smallHit != null));
             if (smallHit != null) {
@@ -745,11 +755,16 @@ class DecodeEngine {
         // （命中全来自 u2/cppSm/dg）——全分辨率 dot chains 在点距 4~7px 的
         // 帧上参数族不工作，只留低频保底防漏
         boolean m2Throttle = pitchEst >= 3 && pitchEst <= 7 && frameCounter % 3 != 0;
-        if (!confirming && (pitchEst < 0 || pitchEst <= 22) && !m2Throttle) {
+        // 暗底帧（负片极性场景，如 flash_dark 黑环氧压痕亮点码）m2 限流为每 4 帧
+        // 一次：adaptive"暗=前景"+fillHoles"白=背景"语义对负片系统性失效（10
+        // 分钟 flash_dark 会话 m2 零 confirmed，命中全来自 dg/cppSm），每帧 ~0.6s
+        // 全跑是纯浪费；留 1/4 低频保底防暗光正片码漏扫。直方图中值 O(N) 判暗底
+        boolean m2DarkThrottle = medianGray(gray) < 128 && frameCounter % 4 != 0;
+        if (!confirming && (pitchEst < 0 || pitchEst <= 22) && !m2Throttle && !m2DarkThrottle) {
             ScanFileLog.log("main=/" + factor + " " + workW + "x" + workH
                     + " roiPhase=" + (frameCounter % 3));
             result = decodeGrayDpm(workImg, workW, workH, true, frameCounter % 3,
-                    null, tCascade + 900L);
+                    null, tCascade + 700L);
             if (result != null) {
                 return confirmCameraResult(result, "m" + factor);
             }
@@ -792,7 +807,7 @@ class DecodeEngine {
             ScanFileLog.log("upscale x" + scale + " crop=" + ratio + " " + upW + "x" + upH);
             result = decodeDotChainsParallel(upImg, upW, upH);
             if (result == null
-                    && android.os.SystemClock.elapsedRealtime() - tCascade < 1100L) {
+                    && android.os.SystemClock.elapsedRealtime() - tCascade < 800L) {
                 result = cppDotProbe(upImg, upW, upH);
             }
             if (result != null) {
@@ -804,7 +819,7 @@ class DecodeEngine {
             // ~80%（真机 pBn45 vs 码 ~250 点）；×scale 放大图点径翻倍质心
             // 召回完整。放大图 miss 再跑原图保底（crop 比率收缩截碎码时兜底）
             Result dg = decodeDotGridLayer(upImg, upW, upH,
-                    (int) Math.round(pitchEst * scale));
+                    (int) Math.round(pitchEst * scale), false);
             // 原图保底限流为每 2 帧一次：小点距帧全分辨率点径 1~2px，质心
             // 召回 ~20%（pBn51 vs ~250 点）几乎必 miss，放大图 dg 已覆盖
             if (dg == null && frameCounter % 2 == 1) {
@@ -833,7 +848,7 @@ class DecodeEngine {
         }
         ScanFileLog.log("aux=/" + aux);
         if (aux != lastSuccessScale && width / aux >= 120 && height / aux >= 120
-                && android.os.SystemClock.elapsedRealtime() - tCascade < 1200L) {
+                && android.os.SystemClock.elapsedRealtime() - tCascade < 800L) {
             byte[] img = ImagePreprocessor.downscale(gray, width, height, aux);
             result = decodeDotChainsParallel(img, width / aux, height / aux);
             if (result == null) {
@@ -849,7 +864,7 @@ class DecodeEngine {
         // 每 3 帧跑一次，其余帧跳过（省下的时间让有效帧率翻倍）；
         // pending 优先：确认中跳过（该层确认门槛还需 +1，凑确认效率低于快层）
         if (!confirming && frameCounter % 3 == 0
-                && android.os.SystemClock.elapsedRealtime() - tCascade < 900L) {
+                && android.os.SystemClock.elapsedRealtime() - tCascade < 600L) {
             Result f = confirmCameraResult(decodeFullResRoi(gray, width, height), "f");
             if (f != null) {
                 return f;
@@ -861,14 +876,25 @@ class DecodeEngine {
     /**
      * DotPeen 点阵网格直解层（DotGridDecoder）：像素预算控制
      * （>800px 侧先 /2 降采样，点距落入 3.5~60px 搜索区间即可）。
+     * <p>
+     * allowDownscale：ROI 原图调用（主 dg 层/小点距保底）true；放大图调用
+     * （小点距分支 upscale 后）false——放大图已按目标点距定尺，再降采样
+     * 会抵消放大意图，恒直跑。
      */
     private Result decodeDotGridLayer(byte[] gray, int width, int height, int pitchEst) {
-        // 点距感知降采样：仅"大点距 + 大图"时 /2（/2 后点距仍 >11 在搜索
-        // 区间内且质心更快更稳）。972x748 ROI 帧一律直跑——12~22 点距帧 /2
-        // 会把点径压半（质心丢 27~80%，真机 pBn45/pBn183 实证）；pitchEst≤11
-        // 的小点距帧由小点距分支的放大图路径覆盖（DotGridDecoder 内部另有
+        return decodeDotGridLayer(gray, width, height, pitchEst, true);
+    }
+
+    private Result decodeDotGridLayer(byte[] gray, int width, int height, int pitchEst,
+                                      boolean allowDownscale) {
+        // 点距感知降采样：pitch>22 且长边>800 时 /2（/2 后点距仍 >11 在搜索
+        // 区间内且质心更快更稳）。原长边门槛 1600 在 ROI 帧（972~1134 长边）
+        // 永不满足——大点距帧全分辨率跑完 miss 再触发 decode() 内部 /2 重试，
+        // 等于双倍全图 BFS（每帧 ~1.4s 的大头）。pitchEst 12~22 一律直跑：
+        // /2 会把点径压半（质心丢 27~80%，真机 pBn45/pBn183 实证）；
+        // pitchEst≤11 的小点距帧由小点距分支的放大图路径覆盖（内部另有
         // 失败后 /2 重试兜底）
-        int factor = (pitchEst > 22 && Math.max(width, height) > 1600) ? 2 : 1;
+        int factor = (allowDownscale && pitchEst > 22 && Math.max(width, height) > 800) ? 2 : 1;
         byte[] img = factor == 1 ? gray : ImagePreprocessor.downscale(gray, width, height, factor);
         Result r = DotGridDecoder.decode(img, width / factor, height / factor);
         if (r != null) {

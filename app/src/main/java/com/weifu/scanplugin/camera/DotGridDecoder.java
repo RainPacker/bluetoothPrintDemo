@@ -191,13 +191,35 @@ final class DotGridDecoder {
                 if ((rows - 1) * pitch > height * 1.2 || (cols - 1) * pitch > width * 1.2) {
                     continue;
                 }
-                // 网格相位/点距局部搜索（mask 对比度最大化）
+                // 网格相位/点距局部搜索（mask 对比度最大化）——相位两级粗→精：
+                // 全枚举 = 25 档点距 × 17×17 相位 ≈ 7.2k 次评估/尺寸，多尺寸 ×
+                // 双极性 miss 帧单此项数百 ms。相位维对比度周期 = 点距 p、对齐
+                // 峰宽 ~p/3：粗扫步进 4（p/2 间距）必有过峰样本，峰邻域 ±4 步
+                // （±p/2）精扫必包住真峰；点距维保持全分辨率 p/24 不动（峰窄，
+                // 该密度是离线/真机标定的安全值）。评估数 289→106/档（-63%）
                 double bestScore = -1;
                 double bestP = pitch, bestGx = bounds[0], bestGy = bounds[2];
                 double pStep = Math.max(0.1, pitch / 24);
                 for (double p = pitch * 0.88; p <= pitch * 1.12; p += pStep) {
-                    for (int ox = -8; ox <= 8; ox++) {
-                        for (int oy = -8; oy <= 8; oy++) {
+                    // 粗扫（5×5，步进 4）：找本档点距的相位峰位
+                    int cbx = 0, cby = 0;
+                    double cs = -1;
+                    for (int ox = -8; ox <= 8; ox += 4) {
+                        for (int oy = -8; oy <= 8; oy += 4) {
+                            double gx = bounds[0] + ox * (p / 8);
+                            double gy = bounds[2] + oy * (p / 8);
+                            double s = gridContrast(mask, width, height, gx, gy, p, rows, cols);
+                            if (s > cs) {
+                                cs = s;
+                                cbx = ox;
+                                cby = oy;
+                            }
+                        }
+                    }
+                    // 精扫（粗扫最优相位 ±4 步）：粗扫点本身在精扫范围内重评，
+                    // 全局最优不会被粗扫漏掉
+                    for (int ox = cbx - 4; ox <= cbx + 4; ox++) {
+                        for (int oy = cby - 4; oy <= cby + 4; oy++) {
                             double gx = bounds[0] + ox * (p / 8);
                             double gy = bounds[2] + oy * (p / 8);
                             double s = gridContrast(mask, width, height, gx, gy, p, rows, cols);
@@ -317,10 +339,22 @@ final class DotGridDecoder {
      * 连通域质心提取：4 邻接 BFS，面积两轮过滤（绝对 [3,4000] +
      * 相对中位数 [0.15x, 4x]），数量超限返回 null（视为非点阵图）。
      */
+    // BFS 复用缓冲（仅解码线程访问——decode 全部调用点都在 scan-decode-thread，
+    // 与 DecodeEngine 复用 Bitmap 同一模式）：每帧最多 6 档阈值 × 2 趟（含
+    // decode() 内部 /2 重试）= 12 次调用，各自 new int[n]（1MP 帧 4MB）+
+    // boolean[n]（1MB）——每帧 ~60MB 垃圾是 miss 帧 GC 卡顿源
+    private static int[] bfsStack = new int[0];
+    private static boolean[] bfsVisited = new boolean[0];
+
     private static List<double[]> extractCentroids(boolean[] mask, int width, int height) {
         int n = width * height;
-        int[] stack = new int[n];
-        boolean[] visited = new boolean[n];
+        if (bfsStack.length < n) {
+            bfsStack = new int[n];
+            bfsVisited = new boolean[n];
+        }
+        int[] stack = bfsStack;
+        boolean[] visited = bfsVisited;
+        java.util.Arrays.fill(visited, 0, n, false);
         List<double[]> all = new ArrayList<>();
         for (int seed = 0; seed < n; seed++) {
             if (!mask[seed] || visited[seed]) {
