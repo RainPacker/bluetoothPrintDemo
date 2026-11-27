@@ -162,8 +162,11 @@ final class DotGridDecoder {
                 int v = gray[i] & 0xFF;
                 mask[i] = brightDots ? v >= otsu : v < otsu;
             }
-            // 码区百分位边界（抗零星噪点外扩）
-            double[] bounds = percentileBounds(cents);
+            // 码区边界：密度聚簇（最大连通桶簇 bbox）优先，聚簇退化回退分位
+            // （暗底帧低阈值档放行的背景噪质心散布全图且占多数时，2%/98%
+            // 分位挡不住——n0 爆到 100+ 候选空集，真机 pBn111~650 无 NxN
+            // 行实证）
+            double[] bounds = clusterBounds(cents, pitch, width, height);
             double spanX = bounds[1] - bounds[0];
             double spanY = bounds[3] - bounds[2];
             double span = Math.max(spanX, spanY);
@@ -460,6 +463,82 @@ final class DotGridDecoder {
         int lo = Math.max(0, (int) (xs.size() * 0.02));
         int hi = Math.min(xs.size() - 1, (int) (xs.size() * 0.98));
         return new double[]{xs.get(lo), xs.get(hi), ys.get(lo), ys.get(hi)};
+    }
+
+    /**
+     * 质心密度聚簇边界：按 pitch 分桶，取最大连通占据桶簇的包围盒。
+     * 暗底帧（flash_dark 型黑环氧压痕）低阈值档（otsu-25/-12）把背景噪点
+     * 放行成散布全图的假质心——噪点占多数时 2%/98% 分位边界仍是全图，
+     * n0 = span/pitch 爆到 100+，候选尺寸区间倒挂成空集，网格搜索整层
+     * 根本没跑（真机 pBn111~650 帧无任何 NxN 行实证）。真码质心在 ~pitch
+     * 网格上连续占据成紧密大簇、背景噪点成小碎片簇——最大连通簇 bbox
+     * 即码区。聚簇退化（<4 桶）回退分位。桶数 ≤ 像素数，复用 BFS 缓冲。
+     */
+    private static double[] clusterBounds(List<double[]> cents, double pitch, int w, int h) {
+        int bw = Math.max(1, (int) (w / pitch) + 1);
+        int bh = Math.max(1, (int) (h / pitch) + 1);
+        int nb = bw * bh;
+        if (bfsStack.length < nb) {
+            bfsStack = new int[nb];
+            bfsVisited = new boolean[nb];
+        }
+        int[] stack = bfsStack;
+        boolean[] seen = bfsVisited;
+        java.util.Arrays.fill(seen, 0, nb, false);
+        boolean[] occ = new boolean[nb];
+        for (double[] c : cents) {
+            int bx = (int) (c[0] / pitch), by = (int) (c[1] / pitch);
+            if (bx < 0) bx = 0; else if (bx >= bw) bx = bw - 1;
+            if (by < 0) by = 0; else if (by >= bh) by = bh - 1;
+            occ[by * bw + bx] = true;
+        }
+        int bestSize = 0, bestLoX = 0, bestHiX = 0, bestLoY = 0, bestHiY = 0;
+        for (int s = 0; s < nb; s++) {
+            if (!occ[s] || seen[s]) {
+                continue;
+            }
+            int top = 0, cnt = 0;
+            stack[top++] = s;
+            seen[s] = true;
+            int loX = bw, hiX = -1, loY = bh, hiY = -1;
+            while (top > 0) {
+                int cur = stack[--top];
+                cnt++;
+                int cx = cur % bw, cy = cur / bw;
+                if (cx < loX) loX = cx;
+                if (cx > hiX) hiX = cx;
+                if (cy < loY) loY = cy;
+                if (cy > hiY) hiY = cy;
+                if (cx + 1 < bw && occ[cur + 1] && !seen[cur + 1]) {
+                    seen[cur + 1] = true;
+                    stack[top++] = cur + 1;
+                }
+                if (cx > 0 && occ[cur - 1] && !seen[cur - 1]) {
+                    seen[cur - 1] = true;
+                    stack[top++] = cur - 1;
+                }
+                if (cy + 1 < bh && occ[cur + bw] && !seen[cur + bw]) {
+                    seen[cur + bw] = true;
+                    stack[top++] = cur + bw;
+                }
+                if (cy > 0 && occ[cur - bw] && !seen[cur - bw]) {
+                    seen[cur - bw] = true;
+                    stack[top++] = cur - bw;
+                }
+            }
+            if (cnt > bestSize) {
+                bestSize = cnt;
+                bestLoX = loX;
+                bestHiX = hiX;
+                bestLoY = loY;
+                bestHiY = hiY;
+            }
+        }
+        if (bestSize >= 4) {
+            return new double[]{bestLoX * pitch, (bestHiX + 1) * pitch,
+                    bestLoY * pitch, (bestHiY + 1) * pitch};
+        }
+        return percentileBounds(cents);
     }
 
     // ===== 网格对齐 =====

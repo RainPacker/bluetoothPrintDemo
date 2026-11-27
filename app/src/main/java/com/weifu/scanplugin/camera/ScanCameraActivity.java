@@ -175,7 +175,9 @@ public class ScanCameraActivity extends AppCompatActivity {
 
     private boolean dpmMode;
     private boolean continuous;
-    private boolean torchOn;
+    private volatile boolean torchOn;
+    // 用户手动操作过补光：自动补光不再干预（用户最后操作优先）
+    private volatile boolean torchTouched = false;
     private boolean frontCamera;
     private boolean albumEnabled;
     private boolean beepEnabled;
@@ -396,6 +398,32 @@ public class ScanCameraActivity extends AppCompatActivity {
                 cam.getCameraControl().setZoomRatio(target);
                 ScanFileLog.log("zoom applied " + target);
             });
+            // 暗底自动补光（DPM 黑环氧压痕等负片场景）：解码器检测到持续 ≥1.2s
+            // 暗底时开灯 + 撤掉金属高光负曝光补偿（bind 时 torch off 会设
+            // -3EV，黑底弱反光点被其压暗）。用户手动操作过补光后不再干预。
+            // 回调在解码线程：UI 更新经 mainHandler.post
+            decodeEngine.setLightListener(on -> {
+                if (!on || torchOn || torchTouched) {
+                    return;
+                }
+                Camera cam = camera;
+                if (cam == null) {
+                    return;
+                }
+                torchOn = true;
+                cam.getCameraControl().enableTorch(true);
+                try {
+                    androidx.camera.core.ExposureState es =
+                            cam.getCameraInfo().getExposureState();
+                    if (es.isExposureCompensationSupported()) {
+                        cam.getCameraControl().setExposureCompensationIndex(0);
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "reset exposure compensation failed", e);
+                }
+                mainHandler.post(this::updateTorchIcon);
+                ScanFileLog.log("auto torch applied");
+            });
             // DPM 模式提高帧处理率：刻印码识别依赖多帧概率累积，200ms 节流（5fps）不足；
             // 文本级跨帧确认需 2 次命中，节流间隔直接决定确认延迟下限
             int intervalMs = dpmMode ? Math.min(80, config.getFrameIntervalMs()) : config.getFrameIntervalMs();
@@ -533,6 +561,7 @@ public class ScanCameraActivity extends AppCompatActivity {
 
     private void toggleTorch() {
         torchOn = !torchOn;
+        torchTouched = true; // 手动操作后，暗底自动补光不再干预
         if (camera != null) {
             camera.getCameraControl().enableTorch(torchOn);
         }

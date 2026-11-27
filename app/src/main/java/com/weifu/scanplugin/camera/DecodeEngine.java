@@ -93,6 +93,21 @@ class DecodeEngine {
         this.zoomListener = l;
     }
 
+    /** 暗底自动补光监听：解码线程回调，实现方调 CameraControl.enableTorch */
+    interface LightRequestListener {
+        void onAutoTorchRequest(boolean on);
+    }
+
+    private volatile LightRequestListener lightListener;
+    // 暗底持续起始时刻（自动补光判定，仅解码线程访问）
+    private long darkSinceMs = 0;
+    // 自动补光是否已触发（每会话一次；用户手动关灯后不再自动干预）
+    private boolean autoTorchDone = false;
+
+    void setLightListener(LightRequestListener l) {
+        this.lightListener = l;
+    }
+
     /**
      * 自动变焦决策（仅解码线程调用，decodeCascade 的 pitchEst 之后）：
      * pitchEst 3~7 = 点距低于甜蜜区一半，码太远/太小 → 建议光学变焦
@@ -173,6 +188,34 @@ class DecodeEngine {
                 Log.i(TAG, "zoom reset 1.0");
                 ScanFileLog.log("zoom reset 1.0");
                 l.onZoomRequest(1.0f);
+            }
+        }
+    }
+
+    /**
+     * 暗底自动补光（仅 DPM 模式）：持续 ≥1.2s 暗底（ROI 中值 <128，直方图
+     * O(N)）→ 请求开灯。黑环氧压痕（flash_dark 型）弱反光点在无补光 +
+     * DPM 金属高光负曝光补偿（bind 时 torch off 设 -3EV）下被压到阈值下
+     * （真机质心召回仅 20~30%），开灯后点反光进入传感器动态范围、AF 获得
+     * 对比度。每会话触发一次即止；确认中（dmHitCounts 非空）不打断凑帧；
+     * 用户手动操作过补光后由 Activity 侧拦截不再干预
+     */
+    private void handleAutoTorch(boolean dark, long now) {
+        if (!dark) {
+            darkSinceMs = 0;
+            return;
+        }
+        if (!dpmMode || autoTorchDone || !dmHitCounts.isEmpty()) {
+            return;
+        }
+        if (darkSinceMs == 0) {
+            darkSinceMs = now;
+        } else if (now - darkSinceMs >= 1200) {
+            autoTorchDone = true;
+            LightRequestListener l = lightListener;
+            if (l != null) {
+                ScanFileLog.log("auto torch on (dark scene)");
+                l.onAutoTorchRequest(true);
             }
         }
     }
@@ -654,7 +697,11 @@ class DecodeEngine {
         // 点阵码获得稳定 Java 命中层；QR/普通码由 cpp1 首帧直出短路，
         // 不会白跑 dg（dpmMode 限定）
         int pitchEst = dpmMode ? estimatePitch(gray, width, height) : -1;
+        // 暗底判定（直方图中值 O(N)，~2ms）：统一驱动三处——自动补光判定、
+        // m2 暗底限流、小点距分支链族/探针跳过
+        boolean dark = dpmMode && medianGray(gray) < 128;
         if (dpmMode) {
+            handleAutoTorch(dark, android.os.SystemClock.elapsedRealtime());
             pushPitch(pitchEst);
             int mp = medianPitch();
             if (mp > 0) {
@@ -758,8 +805,8 @@ class DecodeEngine {
         // 暗底帧（负片极性场景，如 flash_dark 黑环氧压痕亮点码）m2 限流为每 4 帧
         // 一次：adaptive"暗=前景"+fillHoles"白=背景"语义对负片系统性失效（10
         // 分钟 flash_dark 会话 m2 零 confirmed，命中全来自 dg/cppSm），每帧 ~0.6s
-        // 全跑是纯浪费；留 1/4 低频保底防暗光正片码漏扫。直方图中值 O(N) 判暗底
-        boolean m2DarkThrottle = medianGray(gray) < 128 && frameCounter % 4 != 0;
+        // 全跑是纯浪费；留 1/4 低频保底防暗光正片码漏扫（dark 复用级联头部判定）
+        boolean m2DarkThrottle = dark && frameCounter % 4 != 0;
         if (!confirming && (pitchEst < 0 || pitchEst <= 22) && !m2Throttle && !m2DarkThrottle) {
             ScanFileLog.log("main=/" + factor + " " + workW + "x" + workH
                     + " roiPhase=" + (frameCounter % 3));
@@ -805,10 +852,16 @@ class DecodeEngine {
             int upW = (int) up[1];
             int upH = (int) up[2];
             ScanFileLog.log("upscale x" + scale + " crop=" + ratio + " " + upW + "x" + upH);
-            result = decodeDotChainsParallel(upImg, upW, upH);
-            if (result == null
-                    && android.os.SystemClock.elapsedRealtime() - tCascade < 800L) {
-                result = cppDotProbe(upImg, upW, upH);
+            // 暗底帧跳过链族+探针（负片极性实证零贡献，省 ~400ms/帧直奔
+            // dg 放大图）；每 4 帧保底一次防暗光正片小码漏扫（cppSm 每帧
+            // 仍在跑，普通小码不受影响）
+            result = null;
+            if (!dark || frameCounter % 4 == 0) {
+                result = decodeDotChainsParallel(upImg, upW, upH);
+                if (result == null
+                        && android.os.SystemClock.elapsedRealtime() - tCascade < 800L) {
+                    result = cppDotProbe(upImg, upW, upH);
+                }
             }
             if (result != null) {
                 return confirmCameraResult(result, "u" + scale);
