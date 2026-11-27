@@ -95,6 +95,18 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
     private List<ScannerInfo> deviceList = null;
     private int scannerIndex = 0; // Keep the selected scanner
     private static final int PROCESS_BAR_MAX = 100;
+    /**
+     * 加载看门狗超时：弱网/服务器挂起时 onProgressChanged 可能长时间停在 <100
+     * （无错误回调），或主页面完成但子资源挂起导致进度永不到 100。
+     * 超时后强制隐藏 loading，避免用户永久卡在加载动画。
+     */
+    private static final long LOAD_WATCHDOG_TIMEOUT_MS = 20000L;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private Runnable loadWatchdog;
+    /**
+     * 测试模式 loading 隐藏（防抖）：最后一次进度事件后 1s 隐藏
+     */
+    private final Runnable testHideRunnable = () -> setLoadingVisible(false);
 
     String TAG = getClass().getSimpleName();
     // prod
@@ -289,18 +301,14 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         if (LOAD_TEST_PAGE) {
             webView.loadUrl("file:///android_asset/test.html");
             // 本地页秒开，progress 瞬时到 100，加载动画一闪而过——
-            // 模拟 1s 网络加载延迟，便于验证统一加载动画效果
-            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    if (!isFinishing() && !isDestroyed()) {
-                        setLoadingVisible(false);
-                    }
-                }
-            }, 1000L);
+            // 模拟 1s 网络加载延迟。隐藏由 onProgressChanged 防抖统一控制
+            // （最后一次进度事件后 1s 隐藏，冷启动晚到的进度也能正确收尾）
+            mainHandler.postDelayed(testHideRunnable, 1000L);
         } else {
             // 这里填你需要打包的 H5 页面链接
             webView.loadUrl(LOADRL);
+            // 首屏加载兜底：弱网挂起时进度可能长期停在 <100
+            startLoadWatchdog();
         }
 //        shapeLoadingDialog = new ShapeLoadingDialog(this);
 //        shapeLoadingDialog.setLoadingText("加载中...");
@@ -377,6 +385,8 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         if (scanPlugin != null) {
             scanPlugin.release();
         }
+        cancelLoadWatchdog();
+        mainHandler.removeCallbacks(testHideRunnable);
         webView.destroy();
         webView = null;
         super.onDestroy();
@@ -666,11 +676,33 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
    }
     class MyClient extends WebViewClient {
         @Override
+        public void onPageFinished(WebView view, String url) {
+            super.onPageFinished(view, url);
+            // 双保险：进度到 100 是 loading 隐藏的主路径；但主页面完成而子资源挂起时
+            // 进度可能停在 <100（甚至永不到 100），onPageFinished 触发即隐藏
+            cancelLoadWatchdog();
+            if (!LOAD_TEST_PAGE) {
+                setLoadingVisible(false);
+            }
+        }
+
+        @Override
         public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
-            // 显示自定义错误页面
-            webView.clearHistory();
-            webView.loadUrl("file:///android_asset/404.html");
-            webView.clearHistory();
+            // 仅主框架错误才整页替换 404。API<23 上此回调对子资源（图片/js）失败也会触发，
+            // 不加判断会整页被 404.html 替换并引发循环加载（loading 反复重启）
+            if (Build.VERSION.SDK_INT >= 23) {
+                // 23+ 此回调只对主框架触发
+                webView.clearHistory();
+                webView.loadUrl("file:///android_asset/404.html");
+                webView.clearHistory();
+            } else {
+                String current = view.getUrl();
+                if (failingUrl != null && failingUrl.equals(current)) {
+                    webView.clearHistory();
+                    webView.loadUrl("file:///android_asset/404.html");
+                    webView.clearHistory();
+                }
+            }
          /*   CustomDialog.Builder	 builder = new CustomDialog.Builder(MainActivity.this);
             builder.setTitle("提示");
             builder.setWarning("网络出现错误，请检查网络或联系管理员");
@@ -848,11 +880,24 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
             Log.i(TAG, "newProgress:" + newProgress);
             // 统一"刷油漆"加载动画：加载中显示（含后续页面跳转/二次 loadUrl，
             // 修复原先首屏 GONE 后再无 VISIBLE 的缺陷），加载完成隐藏。
-            // 测试模式下本地页秒开，隐藏由 1s 模拟延迟统一控制（见 onCreate）
+            // 测试模式：本地页秒开，用 1s 模拟延迟展示动画。隐藏采用防抖——
+            // 每次进度事件重置 1s 计时，最后一次进度后 1s 隐藏。
+            // 修复卡 loading：模拟器 WebView 渲染进程冷启动 >1s 时首次进度回调
+            // 晚到，会把 onCreate 一次性定时器已隐藏的 loading 重新显示，
+            // 且再无任何隐藏路径 → 永久卡住
             if (LOAD_TEST_PAGE) {
                 setLoadingVisible(true);
+                mainHandler.removeCallbacks(testHideRunnable);
+                mainHandler.postDelayed(testHideRunnable, 1000L);
             } else {
-                setLoadingVisible(newProgress < PROCESS_BAR_MAX);
+                boolean loading = newProgress < PROCESS_BAR_MAX;
+                setLoadingVisible(loading);
+                // 加载中持续续期看门狗；到 100 取消（loading 已由上方隐藏）
+                if (loading) {
+                    startLoadWatchdog();
+                } else {
+                    cancelLoadWatchdog();
+                }
             }
         }
     }
@@ -868,6 +913,27 @@ public class MainActivity extends AppCompatActivity /**implements Scanner.DataLi
         }
         if (loadingBalls != null) {
             loadingBalls.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    /**
+     * 启动加载看门狗：超时后强制隐藏 loading。
+     * 每次开始新一轮加载时调用；进度到 100 或 onPageFinished 时取消。
+     */
+    private void startLoadWatchdog() {
+        cancelLoadWatchdog();
+        loadWatchdog = () -> {
+            Log.w(TAG, "load watchdog fired: loading forced hidden after "
+                    + LOAD_WATCHDOG_TIMEOUT_MS + "ms");
+            setLoadingVisible(false);
+        };
+        mainHandler.postDelayed(loadWatchdog, LOAD_WATCHDOG_TIMEOUT_MS);
+    }
+
+    private void cancelLoadWatchdog() {
+        if (loadWatchdog != null) {
+            mainHandler.removeCallbacks(loadWatchdog);
+            loadWatchdog = null;
         }
     }
 
